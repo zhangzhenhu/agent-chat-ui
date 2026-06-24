@@ -11,6 +11,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
+    "dev:open": "open http://localhost:3000 && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

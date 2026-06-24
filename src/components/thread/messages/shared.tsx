@@ -7,6 +7,7 @@ import {
   CopyCheck,
   ChevronLeft,
   ChevronRight,
+  Clock,
 } from "lucide-react";
 import { TooltipIconButton } from "../tooltip-icon-button";
 import { AnimatePresence, motion } from "framer-motion";
@@ -124,6 +125,7 @@ export function CommandBar({
   handleSubmitEdit,
   handleRegenerate,
   isLoading,
+  duration,
 }: {
   content: string;
   isHumanMessage?: boolean;
@@ -133,6 +135,7 @@ export function CommandBar({
   handleSubmitEdit?: () => void;
   handleRegenerate?: () => void;
   isLoading: boolean;
+  duration?: number | null;
 }) {
   if (isHumanMessage && isAiMessage) {
     throw new Error(
@@ -188,8 +191,19 @@ export function CommandBar({
     );
   }
 
+  function formatDuration(ms: number): string {
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
+  }
+
   return (
     <div className="flex items-center gap-2">
+      {isAiMessage && duration != null && duration > 0 && (
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          <Clock className="size-3" />
+          {formatDuration(duration)}
+        </span>
+      )}
       <ContentCopyable
         content={content}
         disabled={isLoading}

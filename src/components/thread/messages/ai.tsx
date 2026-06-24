@@ -15,6 +15,68 @@ import { ThreadView } from "../agent-inbox";
 import { useQueryState, parseAsBoolean } from "nuqs";
 import { GenericInterruptView } from "./generic-interrupt";
 import { useArtifact } from "../artifact";
+import { Thinking } from "./thinking";
+import { getReasoningContent } from "./reasoning";
+import { useRef, useEffect } from "react";
+
+// Track timing per message ID: start time, when answer text started, and when completed
+const messageTiming = new Map<string, { startTime: number; answerStartTime: number | null; endTime: number | null }>();
+
+function useMessageTiming(
+  messageId: string | undefined,
+  isStreaming: boolean,
+  hasAnswerContent: boolean,
+): { thinking: number | null; answer: number | null } {
+  const recordedRef = useRef(false);
+  const answerRecordedRef = useRef(false);
+
+  useEffect(() => {
+    if (!messageId) return;
+
+    const entry = messageTiming.get(messageId);
+
+    if (isStreaming && !recordedRef.current) {
+      // First time we see this message streaming
+      if (!entry) {
+        messageTiming.set(messageId, { startTime: Date.now(), answerStartTime: null, endTime: null });
+      }
+      recordedRef.current = true;
+    }
+
+    // When answer content first appears, mark the answer start time
+    if (hasAnswerContent && !answerRecordedRef.current && entry) {
+      entry.answerStartTime = Date.now();
+      answerRecordedRef.current = true;
+    }
+
+    if (!isStreaming && recordedRef.current) {
+      // Streaming completed
+      const current = messageTiming.get(messageId);
+      if (current && current.endTime === null) {
+        current.endTime = Date.now();
+      }
+    }
+  }, [messageId, isStreaming, hasAnswerContent]);
+
+  if (!messageId) return { thinking: null, answer: null };
+  const timing = messageTiming.get(messageId);
+  if (!timing) return { thinking: null, answer: null };
+
+  const now = Date.now();
+  const endTime = timing.endTime ?? now;
+
+  // Thinking time: from start to when answer text first appeared (or end if no answer yet)
+  const thinkingEnd = timing.answerStartTime ?? endTime;
+  const thinking = thinkingEnd - timing.startTime;
+
+  // Answer time: from when answer text first appeared to end
+  let answer: number | null = null;
+  if (timing.answerStartTime !== null) {
+    answer = endTime - timing.answerStartTime;
+  }
+
+  return { thinking, answer };
+}
 
 function CustomComponent({
   message,
@@ -110,6 +172,7 @@ export function AssistantMessage({
 }) {
   const content = message?.content ?? [];
   const contentString = getContentString(content);
+  const reasoningContent = message ? getReasoningContent(message) : null;
   const [hideToolCalls] = useQueryState(
     "hideToolCalls",
     parseAsBoolean.withDefault(false),
@@ -118,6 +181,9 @@ export function AssistantMessage({
   const thread = useStreamContext();
   const isLastMessage =
     thread.messages[thread.messages.length - 1].id === message?.id;
+  const isCurrentMessageStreaming = isLoading && isLastMessage;
+  const hasAnswerContent = contentString.length > 0;
+  const timing = useMessageTiming(message?.id, isCurrentMessageStreaming, hasAnswerContent);
   const hasNoAIOrToolMessages = !thread.messages.find(
     (m) => m.type === "ai" || m.type === "tool",
   );
@@ -160,6 +226,14 @@ export function AssistantMessage({
           </>
         ) : (
           <>
+            {reasoningContent && (
+              <Thinking
+                content={reasoningContent}
+                isStreaming={isCurrentMessageStreaming}
+                thinkingDuration={!isCurrentMessageStreaming ? timing.thinking : undefined}
+              />
+            )}
+
             {contentString.length > 0 && (
               <div className="py-1">
                 <MarkdownText>{contentString}</MarkdownText>
@@ -208,6 +282,7 @@ export function AssistantMessage({
                 isLoading={isLoading}
                 isAiMessage={true}
                 handleRegenerate={() => handleRegenerate(parentCheckpoint)}
+                duration={isCurrentMessageStreaming ? null : timing.answer}
               />
             </div>
           </>

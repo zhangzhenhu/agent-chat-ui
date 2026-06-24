@@ -2,7 +2,8 @@ import { v4 as uuidv4 } from "uuid";
 import { ReactNode, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { useStreamContext } from "@/providers/Stream";
+import { useStreamContext, useConfigContext } from "@/providers/Stream";
+import { type StateType } from "@/providers/Stream";
 import { useState, FormEvent } from "react";
 import { Button } from "../ui/button";
 import { Checkpoint, Message } from "@langchain/langgraph-sdk";
@@ -22,6 +23,7 @@ import {
   SquarePen,
   XIcon,
   Plus,
+  Settings,
 } from "lucide-react";
 import { useQueryState, parseAsBoolean } from "nuqs";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
@@ -45,6 +47,8 @@ import {
   ArtifactTitle,
   useArtifactContext,
 } from "./artifact";
+import { AssistantSelector } from "./assistant-selector";
+import { ParamsPanel, type CustomParams } from "./params-panel";
 
 function StickyToBottomContent(props: {
   content: ReactNode;
@@ -118,7 +122,7 @@ export function Thread() {
   const [threadId, _setThreadId] = useQueryState("threadId");
   const [chatHistoryOpen, setChatHistoryOpen] = useQueryState(
     "chatHistoryOpen",
-    parseAsBoolean.withDefault(false),
+    parseAsBoolean.withDefault(true),
   );
   const [hideToolCalls, setHideToolCalls] = useQueryState(
     "hideToolCalls",
@@ -139,8 +143,14 @@ export function Thread() {
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
 
   const stream = useStreamContext();
+  const { setShowConfig } = useConfigContext();
   const messages = stream.messages;
   const isLoading = stream.isLoading;
+
+  const [customParams, setCustomParams] = useState<CustomParams>({
+    configurable: null,
+    input: null,
+  });
 
   const lastError = useRef<string | undefined>(undefined);
 
@@ -214,22 +224,37 @@ export function Thread() {
     const context =
       Object.keys(artifactContext).length > 0 ? artifactContext : undefined;
 
+    // Build submit payload with custom input params
+    const submitPayload: Record<string, unknown> = {
+      messages: [...toolMessages, newHumanMessage],
+      context,
+    };
+    if (customParams.input) {
+      Object.assign(submitPayload, customParams.input);
+    }
+
+    const submitOptions: Record<string, unknown> = {
+      streamMode: ["values"],
+      streamSubgraphs: true,
+      streamResumable: true,
+      optimisticValues: (prev: StateType) => ({
+        ...prev,
+        ...(customParams.input || {}),
+        context,
+        messages: [
+          ...(prev.messages ?? []),
+          ...toolMessages,
+          newHumanMessage,
+        ],
+      }),
+    };
+    if (customParams.configurable) {
+      submitOptions.config = { configurable: customParams.configurable };
+    }
+
     stream.submit(
-      { messages: [...toolMessages, newHumanMessage], context },
-      {
-        streamMode: ["values"],
-        streamSubgraphs: true,
-        streamResumable: true,
-        optimisticValues: (prev) => ({
-          ...prev,
-          context,
-          messages: [
-            ...(prev.messages ?? []),
-            ...toolMessages,
-            newHumanMessage,
-          ],
-        }),
-      },
+      submitPayload as { messages: Message[]; context?: Record<string, unknown> },
+      submitOptions as Parameters<typeof stream.submit>[1],
     );
 
     setInput("");
@@ -242,12 +267,16 @@ export function Thread() {
     // Do this so the loading state is correct
     prevMessageLength.current = prevMessageLength.current - 1;
     setFirstTokenReceived(false);
-    stream.submit(undefined, {
+    const options: Record<string, unknown> = {
       checkpoint: parentCheckpoint,
       streamMode: ["values"],
       streamSubgraphs: true,
       streamResumable: true,
-    });
+    };
+    if (customParams.configurable) {
+      options.config = { configurable: customParams.configurable };
+    }
+    stream.submit(undefined, options as Parameters<typeof stream.submit>[1]);
   };
 
   const chatStarted = !!threadId || !!messages.length;
@@ -368,10 +397,22 @@ export function Thread() {
                     Agent Chat
                   </span>
                 </motion.button>
+                <div className="ml-2">
+                  <AssistantSelector />
+                </div>
               </div>
 
               <div className="flex items-center gap-4">
                 <div className="flex items-center">
+                  <TooltipIconButton
+                    size="lg"
+                    className="p-4"
+                    tooltip="Deployment settings"
+                    variant="ghost"
+                    onClick={() => setShowConfig(true)}
+                  >
+                    <Settings className="size-5" />
+                  </TooltipIconButton>
                   <OpenGitHubRepo />
                 </div>
                 <TooltipIconButton
@@ -444,6 +485,11 @@ export function Thread() {
                   )}
 
                   <ScrollToBottom className="animate-in fade-in-0 zoom-in-95 absolute bottom-full left-1/2 mb-4 -translate-x-1/2" />
+
+                  <ParamsPanel
+                    params={customParams}
+                    onChange={setCustomParams}
+                  />
 
                   <div
                     ref={dropRef}

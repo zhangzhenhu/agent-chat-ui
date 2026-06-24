@@ -43,6 +43,20 @@ const useTypedStream = useStream<
 type StreamContextType = ReturnType<typeof useTypedStream>;
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
 
+type ConfigContextType = {
+  apiUrl: string;
+  setApiUrl: (url: string) => void;
+  assistantId: string;
+  setAssistantId: (id: string) => void;
+  apiKey: string;
+  setApiKey: (key: string) => void;
+  authScheme: string;
+  setAuthScheme: (scheme: string) => void;
+  showConfig: boolean;
+  setShowConfig: (show: boolean) => void;
+};
+const ConfigContext = createContext<ConfigContextType | undefined>(undefined);
+
 async function sleep(ms = 4000) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -159,6 +173,9 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   const [authScheme, setAuthScheme] = useQueryState("authScheme", {
     defaultValue: envAuthScheme || "",
   });
+  const [showConfig, setShowConfig] = useQueryState("showConfig", {
+    defaultValue: "",
+  });
   const [isAgentBuilder, setIsAgentBuilder] = useState(
     () =>
       (authScheme || envAuthScheme || "").toLowerCase() ===
@@ -181,8 +198,11 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   const finalAssistantId = assistantId || envAssistantId;
   const finalAuthScheme = authScheme || envAuthScheme || "";
 
-  // Show the form if we: don't have an API URL, or don't have an assistant ID
-  if (!finalApiUrl || !finalAssistantId) {
+  // Show the form if we: don't have an API URL, or don't have an assistant ID, or explicitly requested
+  const showConfigForm = showConfig === "true" || !finalApiUrl || !finalAssistantId;
+  const isConfigOverlay = showConfig === "true" && finalApiUrl && finalAssistantId;
+
+  if (showConfigForm) {
     return (
       <div className="flex min-h-screen w-full items-center justify-center p-4">
         <div className="animate-in fade-in-0 zoom-in-95 bg-background flex max-w-3xl flex-col rounded-lg border shadow-lg">
@@ -194,8 +214,9 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
               </h1>
             </div>
             <p className="text-muted-foreground">
-              Welcome to Agent Chat! Before you get started, you need to enter
-              the URL of the deployment and the assistant / graph ID.
+              {isConfigOverlay
+                ? "Update your deployment configuration below."
+                : "Welcome to Agent Chat! Before you get started, you need to enter the URL of the deployment and the assistant / graph ID."}
             </p>
           </div>
           <form
@@ -212,6 +233,7 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
               setApiKey(apiKey);
               setAssistantId(assistantId);
               setAuthScheme(isAgentBuilder ? AGENT_BUILDER_AUTH_SCHEME : "");
+              setShowConfig("");
 
               form.reset();
             }}
@@ -287,12 +309,22 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
               </div>
             </div>
 
-            <div className="mt-2 flex justify-end">
+            <div className="mt-2 flex justify-end gap-3">
+              {isConfigOverlay && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  onClick={() => setShowConfig("")}
+                >
+                  Cancel
+                </Button>
+              )}
               <Button
                 type="submit"
                 size="lg"
               >
-                Continue
+                {isConfigOverlay ? "Update" : "Continue"}
                 <ArrowRight className="size-5" />
               </Button>
             </div>
@@ -302,15 +334,30 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
     );
   }
 
+  const configContextValue: ConfigContextType = {
+    apiUrl: apiUrl || "",
+    setApiUrl,
+    assistantId: assistantId || "",
+    setAssistantId,
+    apiKey,
+    setApiKey,
+    authScheme: authScheme || "",
+    setAuthScheme,
+    showConfig: showConfig === "true",
+    setShowConfig: (show: boolean) => setShowConfig(show ? "true" : ""),
+  };
+
   return (
-    <StreamSession
-      apiKey={apiKey}
-      apiUrl={finalApiUrl}
-      assistantId={finalAssistantId}
-      authScheme={finalAuthScheme || undefined}
-    >
-      {children}
-    </StreamSession>
+    <ConfigContext.Provider value={configContextValue}>
+      <StreamSession
+        apiKey={apiKey}
+        apiUrl={finalApiUrl}
+        assistantId={finalAssistantId}
+        authScheme={finalAuthScheme || undefined}
+      >
+        {children}
+      </StreamSession>
+    </ConfigContext.Provider>
   );
 };
 
@@ -319,6 +366,14 @@ export const useStreamContext = (): StreamContextType => {
   const context = useContext(StreamContext);
   if (context === undefined) {
     throw new Error("useStreamContext must be used within a StreamProvider");
+  }
+  return context;
+};
+
+export const useConfigContext = (): ConfigContextType => {
+  const context = useContext(ConfigContext);
+  if (context === undefined) {
+    throw new Error("useConfigContext must be used within a StreamProvider");
   }
   return context;
 };

@@ -79,11 +79,13 @@ export default function ThreadHistory() {
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
   const [chatHistoryOpen, setChatHistoryOpen] = useQueryState(
     "chatHistoryOpen",
-    parseAsBoolean.withDefault(false),
+    parseAsBoolean.withDefault(true),
   );
 
   const { getThreads, threads, setThreads, threadsLoading, setThreadsLoading } =
     useThreads();
+
+  const [assistantId] = useQueryState("assistantId");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -92,7 +94,7 @@ export default function ThreadHistory() {
       .then(setThreads)
       .catch(console.error)
       .finally(() => setThreadsLoading(false));
-  }, []);
+  }, [assistantId]);
 
   return (
     <>
