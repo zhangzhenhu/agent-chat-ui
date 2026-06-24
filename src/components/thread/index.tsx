@@ -354,7 +354,14 @@ export function Thread() {
                   </Button>
                 )}
               </div>
-              <div className="absolute top-2 right-4 flex items-center">
+              <div className="absolute top-2 right-4 flex items-center gap-2">
+                <TooltipIconButton
+                  tooltip="Deployment settings"
+                  variant="ghost"
+                  onClick={() => setShowConfig(true)}
+                >
+                  <Settings className="size-5" />
+                </TooltipIconButton>
                 <OpenGitHubRepo />
               </div>
             </div>
