@@ -26,13 +26,18 @@ export function AssistantSelector() {
     client.assistants
       .search({ limit: 100 })
       .then((result) => {
-        setAssistants(Array.isArray(result) ? result : []);
+        const list = Array.isArray(result) ? result : [];
+        setAssistants(list);
+        // Auto-select first assistant if none is selected yet
+        if (!assistantId && list.length > 0) {
+          setAssistantId(list[0].assistant_id);
+        }
       })
       .catch((err) => {
         console.error("Failed to fetch assistants:", err);
       })
       .finally(() => setLoading(false));
-  }, [apiUrl, apiKey, authScheme]);
+  }, [apiUrl, apiKey, authScheme]); // intentional: only re-fetch when connection params change
 
   // Close on outside click
   useEffect(() => {

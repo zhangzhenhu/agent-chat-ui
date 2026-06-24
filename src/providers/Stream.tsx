@@ -20,9 +20,10 @@ import { Button } from "@/components/ui/button";
 import { LangGraphLogoSVG } from "@/components/icons/langgraph";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { PasswordInput } from "@/components/ui/password-input";
 import { getApiKey } from "@/lib/api-key";
+import { createClient } from "@/providers/client";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
 
@@ -118,8 +119,6 @@ const StreamSession = ({
     },
     onThreadId: (id) => {
       setThreadId(id);
-      // Refetch threads list when thread ID changes.
-      // Wait for some seconds before fetching so we're able to get the new thread that was created.
       sleep().then(() => getThreads().then(setThreads).catch(console.error));
     },
   });
@@ -149,21 +148,105 @@ const StreamSession = ({
   );
 };
 
+/**
+ * When assistantId is not yet set, fetch assistants from the server
+ * and auto-select the first one. Shows a loading state while fetching.
+ */
+function AssistantGate({
+  children,
+  apiKey,
+  apiUrl,
+  assistantId,
+  setAssistantId,
+  authScheme,
+}: {
+  children: ReactNode;
+  apiKey: string;
+  apiUrl: string;
+  assistantId: string | undefined;
+  setAssistantId: (id: string) => void;
+  authScheme: string;
+}) {
+  const [loading, setLoading] = useState(!assistantId);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (assistantId) {
+      setLoading(false);
+      return;
+    }
+    if (!apiUrl) return;
+
+    setLoading(true);
+    setError(null);
+    const client = createClient(apiUrl, apiKey || undefined, authScheme || undefined);
+    client.assistants
+      .search({ limit: 100 })
+      .then((result) => {
+        const list = Array.isArray(result) ? result : [];
+        if (list.length > 0) {
+          setAssistantId(list[0].assistant_id);
+        } else {
+          setError("No assistants found on this server. Please create one first.");
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch assistants:", err);
+        setError("Failed to fetch assistants. Check your deployment URL.");
+      })
+      .finally(() => setLoading(false));
+  }, [apiUrl, assistantId]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="size-8 animate-spin text-blue-500" />
+          <p className="text-muted-foreground">Fetching assistants...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <p className="text-red-500">{error}</p>
+          <Button variant="outline" onClick={() => setAssistantId("")}>
+            Go back
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!assistantId) return null;
+
+  return (
+    <StreamSession
+      apiKey={apiKey}
+      apiUrl={apiUrl}
+      assistantId={assistantId}
+      authScheme={authScheme || undefined}
+    >
+      {children}
+    </StreamSession>
+  );
+}
+
 // Default values for the form
 const DEFAULT_API_URL = "http://localhost:2024";
-const DEFAULT_ASSISTANT_ID = "agent";
 const AGENT_BUILDER_AUTH_SCHEME = "langsmith-api-key";
 
 export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
-  // Get environment variables
   const envApiUrl: string | undefined = process.env.NEXT_PUBLIC_API_URL;
   const envAssistantId: string | undefined =
     process.env.NEXT_PUBLIC_ASSISTANT_ID;
   const envAuthScheme: string | undefined = process.env.NEXT_PUBLIC_AUTH_SCHEME;
 
-  // Use URL params with env var fallbacks
   const [apiUrl, setApiUrl] = useQueryState("apiUrl", {
     defaultValue: envApiUrl || "",
   });
@@ -182,7 +265,6 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
       AGENT_BUILDER_AUTH_SCHEME,
   );
 
-  // For API key, use localStorage with env var fallback
   const [apiKey, _setApiKey] = useState(() => {
     const storedKey = getApiKey();
     return storedKey || "";
@@ -193,14 +275,13 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
     _setApiKey(key);
   };
 
-  // Determine final values to use, prioritizing URL params then env vars
   const finalApiUrl = apiUrl || envApiUrl;
   const finalAssistantId = assistantId || envAssistantId;
   const finalAuthScheme = authScheme || envAuthScheme || "";
 
-  // Show the form if we: don't have an API URL, or don't have an assistant ID, or explicitly requested
-  const showConfigForm = showConfig === "true" || !finalApiUrl || !finalAssistantId;
-  const isConfigOverlay = showConfig === "true" && finalApiUrl && finalAssistantId;
+  // Only require URL; assistantId is auto-selected from server
+  const showConfigForm = showConfig === "true" || !finalApiUrl;
+  const isConfigOverlay = showConfig === "true" && !!finalApiUrl;
 
   if (showConfigForm) {
     return (
@@ -216,7 +297,7 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
             <p className="text-muted-foreground">
               {isConfigOverlay
                 ? "Update your deployment configuration below."
-                : "Welcome to Agent Chat! Before you get started, you need to enter the URL of the deployment and the assistant / graph ID."}
+                : "Welcome to Agent Chat! Enter your LangGraph deployment URL to get started."}
             </p>
           </div>
           <form
@@ -225,13 +306,11 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
 
               const form = e.target as HTMLFormElement;
               const formData = new FormData(form);
-              const apiUrl = formData.get("apiUrl") as string;
-              const assistantId = formData.get("assistantId") as string;
-              const apiKey = formData.get("apiKey") as string;
+              const newApiUrl = formData.get("apiUrl") as string;
+              const newApiKey = formData.get("apiKey") as string;
 
-              setApiUrl(apiUrl);
-              setApiKey(apiKey);
-              setAssistantId(assistantId);
+              setApiUrl(newApiUrl);
+              setApiKey(newApiKey);
               setAuthScheme(isAgentBuilder ? AGENT_BUILDER_AUTH_SCHEME : "");
               setShowConfig("");
 
@@ -252,24 +331,6 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
                 name="apiUrl"
                 className="bg-background"
                 defaultValue={apiUrl || DEFAULT_API_URL}
-                required
-              />
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="assistantId">
-                Assistant / Graph ID<span className="text-rose-500">*</span>
-              </Label>
-              <p className="text-muted-foreground text-sm">
-                This is the ID of the graph (can be the graph name), or
-                assistant to fetch threads from, and invoke when actions are
-                taken.
-              </p>
-              <Input
-                id="assistantId"
-                name="assistantId"
-                className="bg-background"
-                defaultValue={assistantId || DEFAULT_ASSISTANT_ID}
                 required
               />
             </div>
@@ -320,10 +381,7 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
                   Cancel
                 </Button>
               )}
-              <Button
-                type="submit"
-                size="lg"
-              >
+              <Button type="submit" size="lg">
                 {isConfigOverlay ? "Update" : "Continue"}
                 <ArrowRight className="size-5" />
               </Button>
@@ -349,19 +407,19 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
 
   return (
     <ConfigContext.Provider value={configContextValue}>
-      <StreamSession
+      <AssistantGate
         apiKey={apiKey}
         apiUrl={finalApiUrl}
         assistantId={finalAssistantId}
-        authScheme={finalAuthScheme || undefined}
+        setAssistantId={setAssistantId}
+        authScheme={finalAuthScheme}
       >
         {children}
-      </StreamSession>
+      </AssistantGate>
     </ConfigContext.Provider>
   );
 };
 
-// Create a custom hook to use the context
 export const useStreamContext = (): StreamContextType => {
   const context = useContext(StreamContext);
   if (context === undefined) {
