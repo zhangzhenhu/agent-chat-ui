@@ -283,6 +283,9 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   const showConfigForm = showConfig === "true" || !finalApiUrl;
   const isConfigOverlay = showConfig === "true" && !!finalApiUrl;
 
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formLoading, setFormLoading] = useState(false);
+
   if (showConfigForm) {
     return (
       <div className="flex min-h-screen w-full items-center justify-center p-4">
@@ -301,23 +304,56 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
             </p>
           </div>
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
+              setFormError(null);
 
               const form = e.target as HTMLFormElement;
               const formData = new FormData(form);
               const newApiUrl = formData.get("apiUrl") as string;
               const newApiKey = formData.get("apiKey") as string;
+              const newAuthScheme = isAgentBuilder ? AGENT_BUILDER_AUTH_SCHEME : "";
 
-              setApiUrl(newApiUrl);
-              setApiKey(newApiKey);
-              setAuthScheme(isAgentBuilder ? AGENT_BUILDER_AUTH_SCHEME : "");
-              setShowConfig("");
+              setFormLoading(true);
+              try {
+                // Step 1: Check if the deployment URL is reachable
+                const ok = await checkGraphStatus(newApiUrl, newApiKey || null, newAuthScheme);
+                if (!ok) {
+                  setFormError(`Cannot connect to ${newApiUrl}. Please check the URL and API key.`);
+                  setFormLoading(false);
+                  return;
+                }
 
-              form.reset();
+                // Step 2: Check if there are assistants available
+                const client = createClient(newApiUrl, newApiKey || undefined, newAuthScheme || undefined);
+                const assistants = await client.assistants.search({ limit: 1 });
+                const list = Array.isArray(assistants) ? assistants : [];
+                if (list.length === 0) {
+                  setFormError("No assistants found on this server. Please create one first.");
+                  setFormLoading(false);
+                  return;
+                }
+
+                // All good, proceed
+                setApiUrl(newApiUrl);
+                setApiKey(newApiKey);
+                setAuthScheme(newAuthScheme);
+                setShowConfig("");
+
+                form.reset();
+              } catch (err) {
+                setFormError(`Connection failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+              } finally {
+                setFormLoading(false);
+              }
             }}
             className="bg-muted/50 flex flex-col gap-6 p-6"
           >
+            {formError && (
+              <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                {formError}
+              </div>
+            )}
             <div className="flex flex-col gap-2">
               <Label htmlFor="apiUrl">
                 Deployment URL<span className="text-rose-500">*</span>
@@ -381,9 +417,23 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
                   Cancel
                 </Button>
               )}
-              <Button type="submit" size="lg">
-                {isConfigOverlay ? "Update" : "Continue"}
-                <ArrowRight className="size-5" />
+              <Button type="submit" size="lg" disabled={formLoading}>
+                {formLoading ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Verifying...
+                  </>
+                ) : isConfigOverlay ? (
+                  <>
+                    Update
+                    <ArrowRight className="size-5" />
+                  </>
+                ) : (
+                  <>
+                    Continue
+                    <ArrowRight className="size-5" />
+                  </>
+                )}
               </Button>
             </div>
           </form>
