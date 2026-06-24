@@ -19,9 +19,39 @@ import { Thinking } from "./thinking";
 import { getReasoningContent } from "./reasoning";
 import { useRef, useEffect } from "react";
 
-// Track timing per message ID: start time, when answer text started, and when completed
-const messageTiming = new Map<string, { startTime: number; answerStartTime: number | null; endTime: number | null }>();
+/**
+ * Per-message timing tracker for AI responses.
+ *
+ * Why this exists:
+ * We want to show users how long the AI took to respond. But a single message
+ * can have TWO phases:
+ *   1. Thinking (reasoning) — the model's internal monologue, streamed first
+ *   2. Answer — the actual text content, streamed after thinking
+ *
+ * Simply timing from message start to end would conflate both phases. Instead:
+ *   - thinking = startTime → answerStartTime (the "deep thought" phase)
+ *   - answer   = answerStartTime → endTime (the actual reply)
+ *
+ * The thinking duration is shown in the Thinking component header.
+ * The answer duration is shown in the CommandBar next to copy/refresh buttons.
+ *
+ * Uses a module-level Map (not component state) so timing survives
+ * re-renders and message re-ordering.
+ */
+const messageTiming = new Map<string, {
+  startTime: number;
+  answerStartTime: number | null;
+  endTime: number | null;
+}>();
 
+/**
+ * Hook that tracks timing for a single AI message.
+ *
+ * @param messageId       - unique message ID from the stream
+ * @param isStreaming     - whether this message is still being generated
+ * @param hasAnswerContent - whether the message has visible text content yet
+ * @returns { thinking, answer } durations in ms, or null if not yet available
+ */
 function useMessageTiming(
   messageId: string | undefined,
   isStreaming: boolean,

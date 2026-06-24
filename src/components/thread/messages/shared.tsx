@@ -125,6 +125,12 @@ export function CommandBar({
   handleSubmitEdit,
   handleRegenerate,
   isLoading,
+  /**
+   * Duration in ms for the AI response (answer phase only, not thinking).
+   * Displayed as "2.3s" next to the copy/refresh buttons.
+   * Added so users can see how long each AI reply took to generate.
+   * null = still streaming or no timing data available.
+   */
   duration,
 }: {
   content: string;

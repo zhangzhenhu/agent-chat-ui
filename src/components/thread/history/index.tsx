@@ -77,6 +77,10 @@ function ThreadHistoryLoading() {
 
 export default function ThreadHistory() {
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
+  /**
+   * Default to true (was false) so the thread list sidebar is visible by default.
+   * Users can toggle it off with the panel button in the header.
+   */
   const [chatHistoryOpen, setChatHistoryOpen] = useQueryState(
     "chatHistoryOpen",
     parseAsBoolean.withDefault(true),
@@ -87,6 +91,11 @@ export default function ThreadHistory() {
 
   const [assistantId] = useQueryState("assistantId");
 
+  /**
+   * Re-fetch threads when assistantId changes (e.g. user switches
+   * assistants via the dropdown). Previously this only ran on mount,
+   * so switching assistants would show stale threads from the old one.
+   */
   useEffect(() => {
     if (typeof window === "undefined") return;
     setThreadsLoading(true);

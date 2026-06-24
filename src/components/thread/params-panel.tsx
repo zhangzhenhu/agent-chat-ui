@@ -1,5 +1,33 @@
 "use client";
 
+/**
+ * ParamsPanel — collapsible panel in the chat input area for setting custom
+ * LangGraph run parameters.
+ *
+ * Why this exists:
+ * The LangGraph Run API accepts two optional parameter channels beyond messages:
+ *
+ * 1. config.configurable — free-form runtime config object (e.g. model, user_id,
+ *    temperature). Accessible in graph nodes via config.configurable.
+ *    See: https://docs.langchain.com/langsmith/agent-server-api/thread-runs/create-run-stream-output
+ *    (the "config.configurable" field in the request body)
+ *
+ * 2. input — additional state fields merged into the graph's input state.
+ *    These are merged alongside "messages" in the request body.
+ *
+ * The original Agent Chat UI had no way to set these. This panel provides
+ * two JSON textareas (tabbed) so users can pass arbitrary JSON objects.
+ * Values are passed to stream.submit() in handleSubmit and handleRegenerate.
+ *
+ * Interaction:
+ * - "Parameters" button in the input area toggles the panel open/closed
+ * - Blue dot indicator when parameters are set
+ * - Two tabs: Configurable and Input
+ * - Each tab has a textarea with live JSON validation (red border on error)
+ * - Values persist in Thread component state (not URL params, since they can
+ *   be large complex objects)
+ */
+
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";

@@ -147,6 +147,14 @@ export function Thread() {
   const messages = stream.messages;
   const isLoading = stream.isLoading;
 
+  /**
+   * Custom LangGraph run parameters set by the user in the ParamsPanel.
+   * configurable → passed as config.configurable in stream.submit()
+   * input       → merged into the graph state alongside messages
+   *
+   * These are kept in component state (not URL params) because they can
+   * be large JSON objects. They persist across messages within a session.
+   */
   const [customParams, setCustomParams] = useState<CustomParams>({
     configurable: null,
     input: null,
@@ -224,7 +232,10 @@ export function Thread() {
     const context =
       Object.keys(artifactContext).length > 0 ? artifactContext : undefined;
 
-    // Build submit payload with custom input params
+    // Build submit payload with custom input params.
+    // customParams.input is merged into the state object (alongside messages),
+    // so additional graph state fields like user_name, language, etc. are
+    // accessible in the graph's input.
     const submitPayload: Record<string, unknown> = {
       messages: [...toolMessages, newHumanMessage],
       context,
@@ -404,6 +415,8 @@ export function Thread() {
                     Agent Chat
                   </span>
                 </motion.button>
+                {/* Assistant selector: auto-fetches from server, auto-selects
+                    first one. Users can switch anytime via the dropdown. */}
                 <div className="ml-2">
                   <AssistantSelector />
                 </div>
@@ -411,6 +424,8 @@ export function Thread() {
 
               <div className="flex items-center gap-4">
                 <div className="flex items-center">
+                  {/* Settings button: opens the deployment URL form (showConfig overlay)
+                      so users can change the server URL without clearing query params. */}
                   <TooltipIconButton
                     size="lg"
                     className="p-4"

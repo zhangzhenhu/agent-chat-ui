@@ -44,6 +44,15 @@ const useTypedStream = useStream<
 type StreamContextType = ReturnType<typeof useTypedStream>;
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
 
+/**
+ * ConfigContext provides deployment configuration (URL, API key, assistant ID, etc.)
+ * to any component in the tree, avoiding prop drilling.
+ *
+ * Added because:
+ * - The AssistantSelector needs to read/write assistantId and apiUrl
+ * - The settings button needs to trigger showConfig to return to the form
+ * - The custom params panel needs to know the current apiUrl for schema fetching
+ */
 type ConfigContextType = {
   apiUrl: string;
   setApiUrl: (url: string) => void;
@@ -119,6 +128,8 @@ const StreamSession = ({
     },
     onThreadId: (id) => {
       setThreadId(id);
+      // Refetch threads list when thread ID changes.
+      // Wait for some seconds before fetching so we're able to get the new thread that was created.
       sleep().then(() => getThreads().then(setThreads).catch(console.error));
     },
   });
@@ -149,8 +160,21 @@ const StreamSession = ({
 };
 
 /**
- * When assistantId is not yet set, fetch assistants from the server
- * and auto-select the first one. Shows a loading state while fetching.
+ * Gate component that ensures an assistant ID is selected before rendering
+ * the chat UI via StreamSession.
+ *
+ * Why this exists:
+ * Previously, users had to manually type an assistant/graph ID in the form.
+ * This is a terrible UX — assistant IDs are UUIDs assigned by the server,
+ * users can't remember them, and typing them each time is error-prone.
+ *
+ * This component auto-fetches the assistant list from the server and selects
+ * the first one. Users can then switch via the dropdown in the chat header.
+ *
+ * Three states:
+ * 1. loading → spinner while fetching assistants
+ * 2. error   → error message with a "go back" button to return to the form
+ * 3. ready   → renders StreamSession with the selected assistantId
  */
 function AssistantGate({
   children,
@@ -256,6 +280,14 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   const [authScheme, setAuthScheme] = useQueryState("authScheme", {
     defaultValue: envAuthScheme || "",
   });
+
+  /**
+   * showConfig flag: when "true", the deployment URL form is shown even if
+   * apiUrl is already set. This allows users to change their deployment URL
+   * without clearing query params manually.
+   *
+   * Triggered by the Settings button in the chat header.
+   */
   const [showConfig, setShowConfig] = useQueryState("showConfig", {
     defaultValue: "",
   });
@@ -279,7 +311,14 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   const finalAssistantId = assistantId || envAssistantId;
   const finalAuthScheme = authScheme || envAuthScheme || "";
 
-  // Only require URL; assistantId is auto-selected from server
+  /**
+   * Show the form when:
+   * - No API URL is configured, OR
+   * - User explicitly clicked the Settings button (showConfig === "true")
+   *
+   * assistantId is no longer required in the form — it's auto-selected
+   * from the server by AssistantGate after entering the URL.
+   */
   const showConfigForm = showConfig === "true" || !finalApiUrl;
   const isConfigOverlay = showConfig === "true" && !!finalApiUrl;
 
@@ -314,6 +353,14 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
               const newApiKey = formData.get("apiKey") as string;
               const newAuthScheme = isAgentBuilder ? AGENT_BUILDER_AUTH_SCHEME : "";
 
+              /**
+               * Before entering the chat, verify the deployment:
+               * 1. Check if the URL is reachable (via /info endpoint)
+               * 2. Check if there are assistants available
+               *
+               * This prevents users from entering a broken state where
+               * the chat UI loads but can't connect to anything.
+               */
               setFormLoading(true);
               try {
                 // Step 1: Check if the deployment URL is reachable
@@ -370,6 +417,11 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
                 required
               />
             </div>
+
+            {/* Assistant/Graph ID field removed.
+                Assistant ID is now auto-fetched from the server after entering
+                the URL, and users can switch via the dropdown in the chat header.
+                This avoids the poor UX of asking users to type UUIDs. */}
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="apiKey">LangSmith API Key</Label>
@@ -470,6 +522,7 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   );
 };
 
+// Create a custom hook to use the context
 export const useStreamContext = (): StreamContextType => {
   const context = useContext(StreamContext);
   if (context === undefined) {

@@ -1,5 +1,23 @@
 "use client";
 
+/**
+ * AssistantSelector — dropdown in the chat header that lets users switch
+ * between available assistants/graphs on the connected LangGraph server.
+ *
+ * Why this exists:
+ * The original Agent Chat UI required users to manually type an assistant ID
+ * into the deployment form. Assistant IDs are UUIDs assigned by the server —
+ * users can't remember them and typing them each time is painful.
+ *
+ * This component:
+ * 1. Fetches the assistant list from the server via client.assistants.search()
+ * 2. Auto-selects the first assistant if none is currently selected
+ * 3. Shows a dropdown with all available assistants, with checkmark on selected
+ * 4. On switch, clears the threadId to start a fresh conversation
+ *
+ * Used in: src/components/thread/index.tsx (chat header)
+ */
+
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/providers/client";
 import { useConfigContext } from "@/providers/Stream";
@@ -18,7 +36,13 @@ export function AssistantSelector() {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Fetch assistants on mount and when apiUrl changes
+  /**
+   * Fetch assistants from the server whenever the connection parameters change.
+   *
+   * Note: we intentionally do NOT include assistantId in the dependency array
+   * because we only want to re-fetch when the server URL/key changes, not when
+   * the user switches assistants (which would cause an unnecessary re-fetch).
+   */
   useEffect(() => {
     if (!apiUrl) return;
     setLoading(true);
@@ -28,7 +52,9 @@ export function AssistantSelector() {
       .then((result) => {
         const list = Array.isArray(result) ? result : [];
         setAssistants(list);
-        // Auto-select first assistant if none is selected yet
+        // Auto-select first assistant if none is selected yet.
+        // This handles the case where the user enters via env vars or a direct
+        // URL without an assistantId, and the AssistantGate hasn't picked one yet.
         if (!assistantId && list.length > 0) {
           setAssistantId(list[0].assistant_id);
         }
@@ -39,7 +65,7 @@ export function AssistantSelector() {
       .finally(() => setLoading(false));
   }, [apiUrl, apiKey, authScheme]); // intentional: only re-fetch when connection params change
 
-  // Close on outside click
+  // Close the dropdown when clicking outside
   useEffect(() => {
     if (!open) return;
     const handleClickOutside = (e: MouseEvent) => {
@@ -61,7 +87,7 @@ export function AssistantSelector() {
 
   const handleSelect = (assistant: Assistant) => {
     setAssistantId(assistant.assistant_id);
-    setThreadId(null); // Start a new thread
+    setThreadId(null); // Start a new thread when switching assistants
     setOpen(false);
   };
 
