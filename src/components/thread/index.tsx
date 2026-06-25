@@ -49,6 +49,11 @@ import {
 } from "./artifact";
 import { AssistantSelector } from "./assistant-selector";
 import { ParamsPanel, type CustomParams } from "./params-panel";
+import {
+  ThreadUIDirectives,
+  type UIResumePayload,
+} from "./ui-directives";
+import { type UIMessage } from "@langchain/langgraph-sdk/react-ui";
 
 function StickyToBottomContent(props: {
   content: ReactNode;
@@ -159,6 +164,42 @@ export function Thread() {
     configurable: null,
     input: null,
   });
+
+  /**
+   * Load default parameters from /default-params.json on first mount.
+   * This file lives in public/ and users can edit it to set their own
+   * defaults for configurable and input fields. Saves users from having
+   * to re-type the same JSON every session.
+   *
+   * After loading, paramsKey is incremented so ParamsPanel remounts
+   * with the loaded values as its initial state.
+   */
+  const paramsLoadedRef = useRef(false);
+  const [paramsKey, setParamsKey] = useState(0);
+  useEffect(() => {
+    if (paramsLoadedRef.current) return;
+    fetch("/default-params.json")
+      .then((res) => {
+        if (!res.ok) throw new Error("Not found");
+        return res.json();
+      })
+      .then((data) => {
+        const configurable = data?.configurable && typeof data.configurable === "object" && !Array.isArray(data.configurable)
+          ? data.configurable
+          : null;
+        const input = data?.input && typeof data.input === "object" && !Array.isArray(data.input)
+          ? data.input
+          : null;
+        if (configurable || input) {
+          setCustomParams({ configurable, input });
+          setParamsKey((k) => k + 1); // remount ParamsPanel with loaded values
+        }
+      })
+      .catch(() => {
+        // File doesn't exist or is invalid — use empty defaults
+      });
+    paramsLoadedRef.current = true;
+  }, []);
 
   const lastError = useRef<string | undefined>(undefined);
 
@@ -290,9 +331,34 @@ export function Thread() {
     stream.submit(undefined, options as Parameters<typeof stream.submit>[1]);
   };
 
+  const handleResumeUI = (payload: UIResumePayload) => {
+    if (stream.isLoading) return;
+    stream.submit(
+      {},
+      {
+        command: {
+          resume: payload,
+        },
+        streamMode: ["values"],
+        streamSubgraphs: true,
+        streamResumable: true,
+      },
+    );
+  };
+
   const chatStarted = !!threadId || !!messages.length;
   const hasNoAIOrToolMessages = !messages.find(
     (m) => m.type === "ai" || m.type === "tool",
+  );
+  const uiDirectives = (stream.values.ui ?? []).filter(
+    (message): message is UIMessage => {
+      return (
+        !!message &&
+        typeof message === "object" &&
+        "type" in message &&
+        (message as { type?: string }).type === "ui"
+      );
+    },
   );
 
   return (
@@ -491,6 +557,10 @@ export function Thread() {
                       handleRegenerate={handleRegenerate}
                     />
                   )}
+                  <ThreadUIDirectives
+                    messages={uiDirectives}
+                    onResume={handleResumeUI}
+                  />
                   {isLoading && !firstTokenReceived && (
                     <AssistantMessageLoading />
                   )}
@@ -510,6 +580,7 @@ export function Thread() {
                   <ScrollToBottom className="animate-in fade-in-0 zoom-in-95 absolute bottom-full left-1/2 mb-4 -translate-x-1/2" />
 
                   <ParamsPanel
+                    key={paramsKey}
                     params={customParams}
                     onChange={setCustomParams}
                   />

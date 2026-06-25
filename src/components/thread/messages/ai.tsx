@@ -14,6 +14,7 @@ import { isAgentInboxInterruptSchema } from "@/lib/agent-inbox-interrupt";
 import { ThreadView } from "../agent-inbox";
 import { useQueryState, parseAsBoolean } from "nuqs";
 import { GenericInterruptView } from "./generic-interrupt";
+import { FoodConstraintsInterrupt } from "./hitl-constraints";
 import { useArtifact } from "../artifact";
 import { Thinking } from "./thinking";
 import { getReasoningContent } from "./reasoning";
@@ -175,9 +176,18 @@ function Interrupt({
     ? (interrupt as Record<string, any>[])
     : (((interrupt as { value?: unknown } | undefined)?.value ??
         interrupt) as Record<string, any>);
+  const isFoodConstraintsInterrupt =
+    !!fallbackValue &&
+    !Array.isArray(fallbackValue) &&
+    fallbackValue.kind === "food_constraints" &&
+    Array.isArray(fallbackValue.options);
 
   return (
     <>
+      {isFoodConstraintsInterrupt &&
+      (isLastMessage || hasNoAIOrToolMessages) ? (
+        <FoodConstraintsInterrupt interrupt={fallbackValue} />
+      ) : null}
       {isAgentInboxInterruptSchema(interrupt) &&
         (isLastMessage || hasNoAIOrToolMessages) && (
           <ThreadView interrupt={interrupt} />
