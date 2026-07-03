@@ -6,7 +6,7 @@ type FoodConstraintPayload = {
   kind?: string;
   title?: string;
   hint?: string;
-  mode?: string;
+  resume_mode?: string;
   options?: Array<{ label: string; value: string }>;
 };
 
@@ -18,23 +18,12 @@ export function FoodConstraintsInterrupt({
   const thread = useStreamContext();
 
   const handleChoice = (value: string) => {
-    const textMap: Record<string, string> = {
-      budget: "预算我来补充",
-      time_limit: "时间要求我来补充",
-      avoid_foods: "忌口我来补充",
-      all: "预算、时间、忌口我都补充",
-    };
-
+    // 这类 food interrupt 来自官方 interrupt/resume 链路；点击后必须恢复当前 run，
+    // 而不是再追加一条新的普通 human message。
     thread.submit(
+      {},
       {
-        messages: [
-          {
-            type: "human",
-            content: textMap[value] ?? value,
-          },
-        ],
-      },
-      {
+        command: { resume: value },
         streamMode: ["values"],
         streamSubgraphs: true,
         streamResumable: true,
@@ -43,23 +32,26 @@ export function FoodConstraintsInterrupt({
   };
 
   const options = interrupt.options ?? [
-    { label: "补预算", value: "budget" },
-    { label: "补时间", value: "time_limit" },
-    { label: "补忌口", value: "avoid_foods" },
-    { label: "都补", value: "all" },
+    { label: "选项 1", value: "option_1" },
+    { label: "选项 2", value: "option_2" },
   ];
 
   return (
-    <Card className="border-muted-foreground/20 bg-background shadow-sm">
+    <Card className="border-amber-200 bg-amber-50 shadow-sm">
       <CardHeader className="space-y-2">
-        <CardTitle className="text-base">{interrupt.title ?? "补充约束"}</CardTitle>
-        <CardDescription>{interrupt.hint ?? "先点一个需要补充的方向。"}</CardDescription>
+        <CardTitle className="text-base text-amber-950">
+          {interrupt.title ?? "请补充一个关键信息"}
+        </CardTitle>
+        <CardDescription className="text-amber-900/80">
+          {interrupt.hint ?? "点一个最接近的选项，我再继续。"}
+        </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap gap-2">
         {options.map((option) => (
           <Button
             key={option.value}
             variant="outline"
+            className="border-amber-300 bg-white text-amber-950 hover:bg-amber-100"
             onClick={() => handleChoice(option.value)}
           >
             {option.label}

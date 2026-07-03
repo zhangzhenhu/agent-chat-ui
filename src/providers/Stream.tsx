@@ -26,8 +26,34 @@ import { getApiKey } from "@/lib/api-key";
 import { createClient } from "@/providers/client";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
+import { getVisibleAssistants } from "@/lib/assistant-options";
+import {
+  appendAnalyticsEvent,
+  EMPTY_ANALYTICS_STATE,
+  isAnalyticsStreamEvent,
+  type AnalyticsState,
+} from "@/components/thread/analytics-state";
+import type {
+  AnalyticsEventEnvelope,
+  ThinkingEventEnvelope,
+} from "@/components/thread/analytics-types";
+import {
+  appendThinkingEvent,
+  EMPTY_THINKING_STATE,
+  type ThinkingState,
+} from "@/components/thread/thinking-state";
+import {
+  composeStreamContextValue,
+  isRootStreamNamespace,
+  shouldAcceptThinkingNamespace,
+} from "./stream-context-value";
 
 export type StateType = { messages: Message[]; ui?: UIMessage[] };
+export type StreamCustomEvent =
+  | UIMessage
+  | RemoveUIMessage
+  | AnalyticsEventEnvelope
+  | ThinkingEventEnvelope;
 
 const useTypedStream = useStream<
   StateType,
@@ -37,11 +63,14 @@ const useTypedStream = useStream<
       ui?: (UIMessage | RemoveUIMessage)[] | UIMessage | RemoveUIMessage;
       context?: Record<string, unknown>;
     };
-    CustomEventType: UIMessage | RemoveUIMessage;
+    CustomEventType: StreamCustomEvent;
   }
 >;
 
-type StreamContextType = ReturnType<typeof useTypedStream>;
+type StreamContextType = ReturnType<typeof useTypedStream> & {
+  analyticsState: AnalyticsState;
+  thinkingState: ThinkingState;
+};
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
 
 /**
@@ -107,7 +136,13 @@ const StreamSession = ({
 }) => {
   const [threadId, setThreadId] = useQueryState("threadId");
   const { getThreads, setThreads } = useThreads();
-  const streamValue = useTypedStream({
+  const [analyticsState, setAnalyticsState] = useState<AnalyticsState>(
+    EMPTY_ANALYTICS_STATE,
+  );
+  const [thinkingState, setThinkingState] = useState<ThinkingState>(
+    EMPTY_THINKING_STATE,
+  );
+  const streamValue = useTypedStream(({
     apiUrl,
     apiKey: apiKey ?? undefined,
     assistantId,
@@ -118,20 +153,56 @@ const StreamSession = ({
     }),
     threadId: threadId ?? null,
     fetchStateHistory: true,
-    onCustomEvent: (event, options) => {
+    filterSubagentMessages: true,
+    onCustomEvent: (
+      event: StreamCustomEvent,
+      options: {
+        namespace: string[] | undefined;
+        mutate: (
+          update:
+            | Partial<StateType>
+            | ((prev: StateType) => Partial<StateType>),
+        ) => void;
+      },
+    ) => {
       if (isUIMessage(event) || isRemoveUIMessage(event)) {
-        options.mutate((prev) => {
+        if (!isRootStreamNamespace(options.namespace)) {
+          return;
+        }
+        options.mutate((prev: StateType) => {
           const ui = uiMessageReducer(prev.ui ?? [], event);
           return { ...prev, ui };
         });
+        return;
+      }
+
+      if (isAnalyticsStreamEvent(event)) {
+        if (!isRootStreamNamespace(options.namespace)) {
+          return;
+        }
+        setAnalyticsState((prev) =>
+          appendAnalyticsEvent(prev, event as AnalyticsEventEnvelope),
+        );
+        return;
+      }
+
+      if (event && typeof event === "object" && event.kind === "thinking") {
+        if (!shouldAcceptThinkingNamespace(options.namespace)) {
+          return;
+        }
+        setThinkingState((prev) =>
+          appendThinkingEvent(prev, event as ThinkingEventEnvelope),
+        );
       }
     },
-    onThreadId: (id) => {
+    onThreadId: (id: string) => {
       setThreadId(id);
       // Refetch threads list when thread ID changes.
       // Wait for some seconds before fetching so we're able to get the new thread that was created.
       sleep().then(() => getThreads().then(setThreads).catch(console.error));
     },
+  } as unknown) as Parameters<typeof useTypedStream>[0] & {
+    filterSubagentMessages?: boolean;
   });
 
   useEffect(() => {
@@ -152,8 +223,18 @@ const StreamSession = ({
     });
   }, [apiKey, apiUrl, authScheme]);
 
+  useEffect(() => {
+    setAnalyticsState(EMPTY_ANALYTICS_STATE);
+    setThinkingState(EMPTY_THINKING_STATE);
+  }, [threadId, assistantId, apiUrl]);
+
+  const contextValue = composeStreamContextValue(streamValue, {
+    analyticsState,
+    thinkingState,
+  });
+
   return (
-    <StreamContext.Provider value={streamValue}>
+    <StreamContext.Provider value={contextValue}>
       {children}
     </StreamContext.Provider>
   );
@@ -207,7 +288,7 @@ function AssistantGate({
     client.assistants
       .search({ limit: 100 })
       .then((result) => {
-        const list = Array.isArray(result) ? result : [];
+        const list = getVisibleAssistants(result);
         if (list.length > 0) {
           setAssistantId(list[0].assistant_id);
         } else {
@@ -219,7 +300,7 @@ function AssistantGate({
         setError("Failed to fetch assistants. Check your deployment URL.");
       })
       .finally(() => setLoading(false));
-  }, [apiUrl, assistantId]);
+  }, [apiUrl, apiKey, authScheme, assistantId, setAssistantId]);
 
   if (loading) {
     return (
@@ -374,7 +455,7 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
                 // Step 2: Check if there are assistants available
                 const client = createClient(newApiUrl, newApiKey || undefined, newAuthScheme || undefined);
                 const assistants = await client.assistants.search({ limit: 1 });
-                const list = Array.isArray(assistants) ? assistants : [];
+                const list = getVisibleAssistants(assistants);
                 if (list.length === 0) {
                   setFormError("No assistants found on this server. Please create one first.");
                   setFormLoading(false);

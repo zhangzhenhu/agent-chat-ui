@@ -1,7 +1,9 @@
 import { AIMessage, ToolMessage } from "@langchain/langgraph-sdk";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Route, Wrench } from "lucide-react";
+
+import { cn } from "@/lib/utils";
 
 function isComplexValue(value: any): boolean {
   return Array.isArray(value) || (typeof value === "object" && value !== null);
@@ -22,29 +24,36 @@ export function ToolCalls({
         return (
           <div
             key={idx}
-            className="overflow-hidden rounded-lg border border-gray-200"
+            className={cn(
+              "overflow-hidden rounded-2xl border border-slate-200/90 bg-slate-50/70 shadow-sm",
+              "backdrop-blur-sm",
+            )}
           >
-            <div className="border-b border-gray-200 bg-gray-50 px-4 py-2">
-              <h3 className="font-medium text-gray-900">
+            <div className="border-b border-slate-200 bg-slate-100/80 px-4 py-2.5">
+              <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold tracking-[0.12em] text-slate-500 uppercase">
+                <Route className="h-3.5 w-3.5" />
+                Internal Tool Call
+              </div>
+              <h3 className="font-medium text-slate-900">
                 {tc.name}
                 {tc.id && (
-                  <code className="ml-2 rounded bg-gray-100 px-2 py-1 text-sm">
+                  <code className="ml-2 rounded-full bg-white px-2 py-1 text-xs text-slate-600">
                     {tc.id}
                   </code>
                 )}
               </h3>
             </div>
             {hasArgs ? (
-              <table className="min-w-full divide-y divide-gray-200">
-                <tbody className="divide-y divide-gray-200">
+              <table className="min-w-full divide-y divide-slate-200">
+                <tbody className="divide-y divide-slate-200">
                   {Object.entries(args).map(([key, value], argIdx) => (
                     <tr key={argIdx}>
-                      <td className="px-4 py-2 text-sm font-medium whitespace-nowrap text-gray-900">
+                      <td className="px-4 py-2 text-sm font-medium whitespace-nowrap text-slate-900">
                         {key}
                       </td>
-                      <td className="px-4 py-2 text-sm text-gray-500">
+                      <td className="px-4 py-2 text-sm text-slate-600">
                         {isComplexValue(value) ? (
-                          <code className="rounded bg-gray-50 px-2 py-1 font-mono text-sm break-all">
+                          <code className="rounded-xl bg-white px-2 py-1 font-mono text-sm break-all text-slate-700">
                             {JSON.stringify(value, null, 2)}
                           </code>
                         ) : (
@@ -56,7 +65,7 @@ export function ToolCalls({
                 </tbody>
               </table>
             ) : (
-              <code className="block p-3 text-sm">{"{}"}</code>
+              <code className="block p-3 text-sm text-slate-700">{"{}"}</code>
             )}
           </div>
         );
@@ -95,28 +104,32 @@ export function ToolResult({ message }: { message: ToolMessage }) {
 
   return (
     <div className="mx-auto grid max-w-3xl grid-rows-[1fr_auto] gap-2">
-      <div className="overflow-hidden rounded-lg border border-gray-200">
-        <div className="border-b border-gray-200 bg-gray-50 px-4 py-2">
+      <div className="overflow-hidden rounded-2xl border border-amber-200/80 bg-amber-50/70 shadow-sm backdrop-blur-sm">
+        <div className="border-b border-amber-200/90 bg-amber-100/70 px-4 py-2.5">
+          <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold tracking-[0.12em] text-amber-700 uppercase">
+            <Wrench className="h-3.5 w-3.5" />
+            Internal Tool Result
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             {message.name ? (
-              <h3 className="font-medium text-gray-900">
+              <h3 className="font-medium text-amber-950">
                 Tool Result:{" "}
-                <code className="rounded bg-gray-100 px-2 py-1">
+                <code className="rounded-full bg-white px-2 py-1 text-xs text-amber-800">
                   {message.name}
                 </code>
               </h3>
             ) : (
-              <h3 className="font-medium text-gray-900">Tool Result</h3>
+              <h3 className="font-medium text-amber-950">Tool Result</h3>
             )}
             {message.tool_call_id && (
-              <code className="ml-2 rounded bg-gray-100 px-2 py-1 text-sm">
+              <code className="ml-2 rounded-full bg-white px-2 py-1 text-xs text-amber-800">
                 {message.tool_call_id}
               </code>
             )}
           </div>
         </div>
         <motion.div
-          className="min-w-full bg-gray-100"
+          className="min-w-full bg-amber-50/60"
           initial={false}
           animate={{ height: "auto" }}
           transition={{ duration: 0.3 }}
@@ -134,8 +147,8 @@ export function ToolResult({ message }: { message: ToolMessage }) {
                 transition={{ duration: 0.2 }}
               >
                 {isJsonContent ? (
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <tbody className="divide-y divide-gray-200">
+                  <table className="min-w-full divide-y divide-slate-200">
+                    <tbody className="divide-y divide-slate-200">
                       {(Array.isArray(parsedContent)
                         ? isExpanded
                           ? parsedContent
@@ -147,12 +160,12 @@ export function ToolResult({ message }: { message: ToolMessage }) {
                           : [item[0], item[1]];
                         return (
                           <tr key={argIdx}>
-                            <td className="px-4 py-2 text-sm font-medium whitespace-nowrap text-gray-900">
+                            <td className="px-4 py-2 text-sm font-medium whitespace-nowrap text-slate-900">
                               {key}
                             </td>
-                            <td className="px-4 py-2 text-sm text-gray-500">
+                            <td className="px-4 py-2 text-sm text-slate-600">
                               {isComplexValue(value) ? (
-                                <code className="rounded bg-gray-50 px-2 py-1 font-mono text-sm break-all">
+                                <code className="rounded-xl bg-white px-2 py-1 font-mono text-sm break-all text-slate-700">
                                   {JSON.stringify(value, null, 2)}
                                 </code>
                               ) : (
@@ -165,7 +178,7 @@ export function ToolResult({ message }: { message: ToolMessage }) {
                     </tbody>
                   </table>
                 ) : (
-                  <code className="block text-sm">{displayedContent}</code>
+                  <code className="block text-sm text-amber-950/90">{displayedContent}</code>
                 )}
               </motion.div>
             </AnimatePresence>
@@ -176,7 +189,7 @@ export function ToolResult({ message }: { message: ToolMessage }) {
               parsedContent.length > 5)) && (
             <motion.button
               onClick={() => setIsExpanded(!isExpanded)}
-              className="flex w-full cursor-pointer items-center justify-center border-t-[1px] border-gray-200 py-2 text-gray-500 transition-all duration-200 ease-in-out hover:bg-gray-50 hover:text-gray-600"
+              className="flex w-full cursor-pointer items-center justify-center border-t-[1px] border-amber-200/90 py-2 text-amber-700 transition-all duration-200 ease-in-out hover:bg-amber-100/60 hover:text-amber-900"
               initial={{ scale: 1 }}
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}

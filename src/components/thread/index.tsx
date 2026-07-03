@@ -1,10 +1,10 @@
 import { v4 as uuidv4 } from "uuid";
-import { ReactNode, useEffect, useRef } from "react";
+import { ReactNode, useRef } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useStreamContext, useConfigContext } from "@/providers/Stream";
 import { type StateType } from "@/providers/Stream";
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useEffect, useMemo } from "react";
 import { Button } from "../ui/button";
 import { Checkpoint, Message } from "@langchain/langgraph-sdk";
 import { AssistantMessage, AssistantMessageLoading } from "./messages/ai";
@@ -50,10 +50,18 @@ import {
 import { AssistantSelector } from "./assistant-selector";
 import { ParamsPanel, type CustomParams } from "./params-panel";
 import {
-  ThreadUIDirectives,
-  type UIResumePayload,
-} from "./ui-directives";
-import { type UIMessage } from "@langchain/langgraph-sdk/react-ui";
+  PendingInterruptCard,
+} from "./process-trace";
+import {
+  getInternalTraceEntries,
+  buildTranscriptBlocks,
+  resolveThinkingTrace,
+  splitTranscriptBlocksForThinking,
+} from "./process-trace-helpers";
+import { getContentString } from "./utils";
+import { ThinkingTraceCard } from "./thinking-trace-card";
+import { resolveLatestAnalyticsRun } from "./analytics-state";
+import { resolveThinkingTraceDisplay } from "./thinking-trace-display";
 
 function StickyToBottomContent(props: {
   content: ReactNode;
@@ -120,6 +128,18 @@ function OpenGitHubRepo() {
   );
 }
 
+function getStateMessages(values: StateType | undefined): Message[] {
+  return Array.isArray(values?.messages) ? values.messages : [];
+}
+
+function getStateInterrupt(values: StateType | undefined): unknown {
+  const raw = (values as Record<string, unknown> | undefined)?.__interrupt__;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return undefined;
+  }
+  return raw.length === 1 ? raw[0] : raw;
+}
+
 export function Thread() {
   const [artifactContext, setArtifactContext] = useArtifactContext();
   const [artifactOpen, closeArtifact] = useArtifactOpen();
@@ -149,8 +169,61 @@ export function Thread() {
 
   const stream = useStreamContext();
   const { setShowConfig } = useConfigContext();
-  const messages = stream.messages;
+  const stateValues = stream.values as StateType | undefined;
+  const messages = useMemo(() => getStateMessages(stateValues), [stateValues]);
+  const interrupt = useMemo(() => getStateInterrupt(stateValues), [stateValues]);
   const isLoading = stream.isLoading;
+  const visibleMessages = useMemo(
+    () =>
+      messages.filter(
+        (message) => !message.id?.startsWith(DO_NOT_RENDER_ID_PREFIX),
+      ),
+    [messages],
+  );
+  const transcriptMessages = useMemo(
+    () =>
+      visibleMessages.filter((message) => {
+        if (message.type === "human") {
+          return true;
+        }
+        if (message.type !== "ai") {
+          return false;
+        }
+        return getContentString(message.content).trim().length > 0;
+      }),
+    [visibleMessages],
+  );
+  const internalTraceEntries = useMemo(
+    () => getInternalTraceEntries(visibleMessages, isLoading),
+    [visibleMessages, isLoading],
+  );
+  const transcriptBlocks = useMemo(
+    () =>
+      buildTranscriptBlocks({
+        messages: transcriptMessages,
+      }),
+    [transcriptMessages],
+  );
+  const transcriptLayout = useMemo(
+    () => splitTranscriptBlocksForThinking(transcriptBlocks),
+    [transcriptBlocks],
+  );
+  const thinkingTrace = useMemo(
+    () => resolveThinkingTrace(stateValues?.ui),
+    [stateValues],
+  );
+  const thinkingDisplay = useMemo(
+    () =>
+      resolveThinkingTraceDisplay({
+        durable: thinkingTrace,
+        thinkingState: stream.thinkingState,
+      }),
+    [thinkingTrace, stream.thinkingState],
+  );
+  const latestAnalyticsRun = useMemo(
+    () => resolveLatestAnalyticsRun(stream.analyticsState),
+    [stream.analyticsState],
+  );
 
   /**
    * Custom LangGraph run parameters set by the user in the ParamsPanel.
@@ -268,7 +341,7 @@ export function Thread() {
       ] as Message["content"],
     };
 
-    const toolMessages = ensureToolCallsHaveResponses(stream.messages);
+    const toolMessages = ensureToolCallsHaveResponses(messages);
 
     const context =
       Object.keys(artifactContext).length > 0 ? artifactContext : undefined;
@@ -286,7 +359,7 @@ export function Thread() {
     }
 
     const submitOptions: Record<string, unknown> = {
-      streamMode: ["values"],
+      streamMode: ["values", "custom"],
       streamSubgraphs: true,
       streamResumable: true,
       optimisticValues: (prev: StateType) => ({
@@ -321,7 +394,7 @@ export function Thread() {
     setFirstTokenReceived(false);
     const options: Record<string, unknown> = {
       checkpoint: parentCheckpoint,
-      streamMode: ["values"],
+      streamMode: ["values", "custom"],
       streamSubgraphs: true,
       streamResumable: true,
     };
@@ -331,36 +404,7 @@ export function Thread() {
     stream.submit(undefined, options as Parameters<typeof stream.submit>[1]);
   };
 
-  const handleResumeUI = (payload: UIResumePayload) => {
-    if (stream.isLoading) return;
-    stream.submit(
-      {},
-      {
-        command: {
-          resume: payload,
-        },
-        streamMode: ["values"],
-        streamSubgraphs: true,
-        streamResumable: true,
-      },
-    );
-  };
-
   const chatStarted = !!threadId || !!messages.length;
-  const hasNoAIOrToolMessages = !messages.find(
-    (m) => m.type === "ai" || m.type === "tool",
-  );
-  const uiDirectives = (stream.values.ui ?? []).filter(
-    (message): message is UIMessage => {
-      return (
-        !!message &&
-        typeof message === "object" &&
-        "type" in message &&
-        (message as { type?: string }).type === "ui"
-      );
-    },
-  );
-
   return (
     <div className="flex h-screen w-full overflow-hidden">
       <div className="relative hidden lg:flex">
@@ -529,37 +573,58 @@ export function Thread() {
               contentClassName="pt-8 pb-16 max-w-3xl mx-auto flex flex-col gap-4 w-full"
               content={
                 <>
-                  {messages
-                    .filter((m) => !m.id?.startsWith(DO_NOT_RENDER_ID_PREFIX))
-                    .map((message, index) =>
-                      message.type === "human" ? (
+                  {transcriptLayout.beforeThinking.map((block, index) => {
+                    if (block.kind === "human") {
+                      return (
                         <HumanMessage
-                          key={message.id || `${message.type}-${index}`}
-                          message={message}
+                          key={block.message.id || `human-${index}`}
+                          message={block.message}
                           isLoading={isLoading}
                         />
-                      ) : (
+                      );
+                    }
+
+                    return (
                         <AssistantMessage
-                          key={message.id || `${message.type}-${index}`}
-                          message={message}
+                          key={block.message.id || `assistant-${index}`}
+                          message={block.message}
                           isLoading={isLoading}
                           handleRegenerate={handleRegenerate}
                         />
-                      ),
-                    )}
-                  {/* Special rendering case where there are no AI/tool messages, but there is an interrupt.
-                    We need to render it outside of the messages list, since there are no messages to render */}
-                  {hasNoAIOrToolMessages && !!stream.interrupt && (
-                    <AssistantMessage
-                      key="interrupt-msg"
-                      message={undefined}
+                    );
+                  })}
+                  {thinkingDisplay.snapshot ? (
+                    <ThinkingTraceCard
+                      snapshot={thinkingDisplay.snapshot}
+                      runBucket={thinkingDisplay.runBucket}
                       isLoading={isLoading}
-                      handleRegenerate={handleRegenerate}
+                      analyticsEvents={latestAnalyticsRun.events}
+                      analyticsRunId={latestAnalyticsRun.runId}
+                      runtimeTraceEntries={internalTraceEntries}
                     />
-                  )}
-                  <ThreadUIDirectives
-                    messages={uiDirectives}
-                    onResume={handleResumeUI}
+                  ) : null}
+                  {transcriptLayout.afterThinking.map((block, index) => {
+                    if (block.kind === "human") {
+                      return (
+                        <HumanMessage
+                          key={block.message.id || `human-tail-${index}`}
+                          message={block.message}
+                          isLoading={isLoading}
+                        />
+                      );
+                    }
+
+                    return (
+                      <AssistantMessage
+                        key={block.message.id || `assistant-tail-${index}`}
+                        message={block.message}
+                        isLoading={isLoading}
+                        handleRegenerate={handleRegenerate}
+                      />
+                    );
+                  })}
+                  <PendingInterruptCard
+                    interrupt={interrupt}
                   />
                   {isLoading && !firstTokenReceived && (
                     <AssistantMessageLoading />

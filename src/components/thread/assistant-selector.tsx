@@ -25,6 +25,10 @@ import { useQueryState } from "nuqs";
 import { Assistant } from "@langchain/langgraph-sdk";
 import { ChevronDown, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  getAssistantDisplayName,
+  getVisibleAssistants,
+} from "@/lib/assistant-options";
 
 export function AssistantSelector() {
   const { apiUrl, apiKey, authScheme, assistantId, setAssistantId } =
@@ -50,7 +54,7 @@ export function AssistantSelector() {
     client.assistants
       .search({ limit: 100 })
       .then((result) => {
-        const list = Array.isArray(result) ? result : [];
+        const list = getVisibleAssistants(result);
         setAssistants(list);
         // Auto-select first assistant if none is selected yet.
         // This handles the case where the user enters via env vars or a direct
@@ -63,7 +67,7 @@ export function AssistantSelector() {
         console.error("Failed to fetch assistants:", err);
       })
       .finally(() => setLoading(false));
-  }, [apiUrl, apiKey, authScheme]); // intentional: only re-fetch when connection params change
+  }, [apiUrl, apiKey, authScheme, assistantId, setAssistantId]);
 
   // Close the dropdown when clicking outside
   useEffect(() => {
@@ -83,7 +87,10 @@ export function AssistantSelector() {
   const currentAssistant = assistants.find(
     (a) => a.assistant_id === assistantId,
   );
-  const displayName = currentAssistant?.name || assistantId || "Select assistant";
+  const displayName =
+    getAssistantDisplayName(currentAssistant) ||
+    assistantId ||
+    "Select assistant";
 
   const handleSelect = (assistant: Assistant) => {
     setAssistantId(assistant.assistant_id);
@@ -140,7 +147,7 @@ export function AssistantSelector() {
                   )}
                 >
                   <span className="flex-1 truncate">
-                    {assistant.name || assistant.assistant_id}
+                    {getAssistantDisplayName(assistant)}
                   </span>
                   {isSelected && <Check className="size-4 shrink-0" />}
                 </button>

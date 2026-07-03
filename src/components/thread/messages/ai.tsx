@@ -1,203 +1,104 @@
-import { parsePartialJson } from "@langchain/core/output_parsers";
+import { useRef, useEffect } from "react";
+import { Checkpoint, Message } from "@langchain/langgraph-sdk";
+import { useQueryState, parseAsBoolean } from "nuqs";
+import {
+  LoadExternalComponent,
+  type UIMessage,
+} from "@langchain/langgraph-sdk/react-ui";
+
 import { useStreamContext } from "@/providers/Stream";
-import { AIMessage, Checkpoint, Message } from "@langchain/langgraph-sdk";
-import { useStream } from "@langchain/langgraph-sdk/react";
 import { getContentString } from "../utils";
 import { BranchSwitcher, CommandBar } from "./shared";
 import { MarkdownText } from "../markdown-text";
-import { LoadExternalComponent } from "@langchain/langgraph-sdk/react-ui";
 import { cn } from "@/lib/utils";
-import { ToolCalls, ToolResult } from "./tool-calls";
-import { MessageContentComplex } from "@langchain/core/messages";
-import { Fragment } from "react/jsx-runtime";
-import { isAgentInboxInterruptSchema } from "@/lib/agent-inbox-interrupt";
-import { ThreadView } from "../agent-inbox";
-import { useQueryState, parseAsBoolean } from "nuqs";
-import { GenericInterruptView } from "./generic-interrupt";
-import { FoodConstraintsInterrupt } from "./hitl-constraints";
 import { useArtifact } from "../artifact";
-import { Thinking } from "./thinking";
-import { getReasoningContent } from "./reasoning";
-import { useRef, useEffect } from "react";
+import { clientComponents } from "../generative-ui/component-map";
+import type { StateType } from "@/providers/Stream";
 
 /**
- * Per-message timing tracker for AI responses.
+ * Per-message timing tracker for the final answer.
  *
- * Why this exists:
- * We want to show users how long the AI took to respond. But a single message
- * can have TWO phases:
- *   1. Thinking (reasoning) — the model's internal monologue, streamed first
- *   2. Answer — the actual text content, streamed after thinking
- *
- * Simply timing from message start to end would conflate both phases. Instead:
- *   - thinking = startTime → answerStartTime (the "deep thought" phase)
- *   - answer   = answerStartTime → endTime (the actual reply)
- *
- * The thinking duration is shown in the Thinking component header.
- * The answer duration is shown in the CommandBar next to copy/refresh buttons.
- *
- * Uses a module-level Map (not component state) so timing survives
- * re-renders and message re-ordering.
+ * 注意：
+ * 现在 thinking/tool/interrupt 已经迁移到独立过程卡，这里只负责正式 transcript。
+ * 计时也只服务于最终回答的 command bar，不再承担过程轨迹的生命周期管理。
  */
-const messageTiming = new Map<string, {
-  startTime: number;
-  answerStartTime: number | null;
-  endTime: number | null;
-}>();
+const messageTiming = new Map<
+  string,
+  {
+    startTime: number;
+    endTime: number | null;
+  }
+>();
 
-/**
- * Hook that tracks timing for a single AI message.
- *
- * @param messageId       - unique message ID from the stream
- * @param isStreaming     - whether this message is still being generated
- * @param hasAnswerContent - whether the message has visible text content yet
- * @returns { thinking, answer } durations in ms, or null if not yet available
- */
-function useMessageTiming(
+function useAnswerTiming(
   messageId: string | undefined,
   isStreaming: boolean,
-  hasAnswerContent: boolean,
-): { thinking: number | null; answer: number | null } {
+): number | null {
   const recordedRef = useRef(false);
-  const answerRecordedRef = useRef(false);
 
   useEffect(() => {
     if (!messageId) return;
 
-    const entry = messageTiming.get(messageId);
-
     if (isStreaming && !recordedRef.current) {
-      // First time we see this message streaming
-      if (!entry) {
-        messageTiming.set(messageId, { startTime: Date.now(), answerStartTime: null, endTime: null });
+      if (!messageTiming.has(messageId)) {
+        messageTiming.set(messageId, {
+          startTime: Date.now(),
+          endTime: null,
+        });
       }
       recordedRef.current = true;
-    }
-
-    // When answer content first appears, mark the answer start time
-    if (hasAnswerContent && !answerRecordedRef.current && entry) {
-      entry.answerStartTime = Date.now();
-      answerRecordedRef.current = true;
+      return;
     }
 
     if (!isStreaming && recordedRef.current) {
-      // Streaming completed
       const current = messageTiming.get(messageId);
       if (current && current.endTime === null) {
         current.endTime = Date.now();
       }
     }
-  }, [messageId, isStreaming, hasAnswerContent]);
+  }, [messageId, isStreaming]);
 
-  if (!messageId) return { thinking: null, answer: null };
+  if (!messageId) return null;
   const timing = messageTiming.get(messageId);
-  if (!timing) return { thinking: null, answer: null };
+  if (!timing) return null;
 
-  const now = Date.now();
-  const endTime = timing.endTime ?? now;
-
-  // Thinking time: from start to when answer text first appeared (or end if no answer yet)
-  const thinkingEnd = timing.answerStartTime ?? endTime;
-  const thinking = thinkingEnd - timing.startTime;
-
-  // Answer time: from when answer text first appeared to end
-  let answer: number | null = null;
-  if (timing.answerStartTime !== null) {
-    answer = endTime - timing.answerStartTime;
-  }
-
-  return { thinking, answer };
+  const endTime = timing.endTime ?? Date.now();
+  return endTime - timing.startTime;
 }
 
-function CustomComponent({
+function MessageBoundCard({
   message,
-  thread,
 }: {
   message: Message;
-  thread: ReturnType<typeof useStreamContext>;
 }) {
+  const thread = useStreamContext();
   const artifact = useArtifact();
-  const { values } = useStreamContext();
-  const customComponents = values.ui?.filter(
-    (ui) => ui.metadata?.message_id === message.id,
-  );
+  const uiMessages = (((thread.values as StateType | undefined)?.ui ?? []).filter(
+    (item): item is UIMessage =>
+      !!item &&
+      typeof item === "object" &&
+      "type" in item &&
+      item.type === "ui" &&
+      item.name === "card" &&
+      item.metadata?.message_id === message.id,
+  )) as UIMessage[];
 
-  if (!customComponents?.length) return null;
+  if (uiMessages.length === 0) {
+    return null;
+  }
+
   return (
-    <Fragment key={message.id}>
-      {customComponents.map((customComponent) => (
+    <div className="flex flex-col gap-3">
+      {uiMessages.map((uiMessage) => (
         <LoadExternalComponent
-          key={customComponent.id}
-          stream={thread as unknown as ReturnType<typeof useStream>}
-          message={customComponent}
-          meta={{ ui: customComponent, artifact }}
+          key={uiMessage.id}
+          stream={thread as Parameters<typeof LoadExternalComponent>[0]["stream"]}
+          message={uiMessage}
+          meta={{ ui: uiMessage, artifact }}
+          components={clientComponents}
         />
       ))}
-    </Fragment>
-  );
-}
-
-function parseAnthropicStreamedToolCalls(
-  content: MessageContentComplex[],
-): AIMessage["tool_calls"] {
-  const toolCallContents = content.filter((c) => c.type === "tool_use" && c.id);
-
-  return toolCallContents.map((tc) => {
-    const toolCall = tc as Record<string, any>;
-    let json: Record<string, any> = {};
-    if (toolCall?.input) {
-      try {
-        json = parsePartialJson(toolCall.input) ?? {};
-      } catch {
-        // Pass
-      }
-    }
-    return {
-      name: toolCall.name ?? "",
-      id: toolCall.id ?? "",
-      args: json,
-      type: "tool_call",
-    };
-  });
-}
-
-interface InterruptProps {
-  interrupt?: unknown;
-  isLastMessage: boolean;
-  hasNoAIOrToolMessages: boolean;
-}
-
-function Interrupt({
-  interrupt,
-  isLastMessage,
-  hasNoAIOrToolMessages,
-}: InterruptProps) {
-  const fallbackValue = Array.isArray(interrupt)
-    ? (interrupt as Record<string, any>[])
-    : (((interrupt as { value?: unknown } | undefined)?.value ??
-        interrupt) as Record<string, any>);
-  const isFoodConstraintsInterrupt =
-    !!fallbackValue &&
-    !Array.isArray(fallbackValue) &&
-    fallbackValue.kind === "food_constraints" &&
-    Array.isArray(fallbackValue.options);
-
-  return (
-    <>
-      {isFoodConstraintsInterrupt &&
-      (isLastMessage || hasNoAIOrToolMessages) ? (
-        <FoodConstraintsInterrupt interrupt={fallbackValue} />
-      ) : null}
-      {isAgentInboxInterruptSchema(interrupt) &&
-        (isLastMessage || hasNoAIOrToolMessages) && (
-          <ThreadView interrupt={interrupt} />
-        )}
-      {interrupt &&
-      !isAgentInboxInterruptSchema(interrupt) &&
-      (isLastMessage || hasNoAIOrToolMessages) ? (
-        <GenericInterruptView interrupt={fallbackValue} />
-      ) : null}
-    </>
+    </div>
   );
 }
 
@@ -206,127 +107,64 @@ export function AssistantMessage({
   isLoading,
   handleRegenerate,
 }: {
-  message: Message | undefined;
+  message: Message;
   isLoading: boolean;
   handleRegenerate: (parentCheckpoint: Checkpoint | null | undefined) => void;
 }) {
-  const content = message?.content ?? [];
-  const contentString = getContentString(content);
-  const reasoningContent = message ? getReasoningContent(message) : null;
+  const thread = useStreamContext();
+  const threadValues = thread.values as StateType | undefined;
+  const threadMessages = Array.isArray(threadValues?.messages)
+    ? threadValues.messages
+    : [];
   const [hideToolCalls] = useQueryState(
     "hideToolCalls",
     parseAsBoolean.withDefault(false),
   );
-
-  const thread = useStreamContext();
+  const meta = thread.getMessagesMetadata(message);
   const isLastMessage =
-    thread.messages[thread.messages.length - 1].id === message?.id;
+    threadMessages[threadMessages.length - 1]?.id === message.id;
   const isCurrentMessageStreaming = isLoading && isLastMessage;
-  const hasAnswerContent = contentString.length > 0;
-  const timing = useMessageTiming(message?.id, isCurrentMessageStreaming, hasAnswerContent);
-  const hasNoAIOrToolMessages = !thread.messages.find(
-    (m) => m.type === "ai" || m.type === "tool",
-  );
-  const meta = message ? thread.getMessagesMetadata(message) : undefined;
-  const threadInterrupt = thread.interrupt;
-
+  const duration = useAnswerTiming(message.id, isCurrentMessageStreaming);
   const parentCheckpoint = meta?.firstSeenState?.parent_checkpoint;
-  const anthropicStreamedToolCalls = Array.isArray(content)
-    ? parseAnthropicStreamedToolCalls(content)
-    : undefined;
+  const contentString = getContentString(message.content);
 
-  const hasToolCalls =
-    message &&
-    "tool_calls" in message &&
-    message.tool_calls &&
-    message.tool_calls.length > 0;
-  const toolCallsHaveContents =
-    hasToolCalls &&
-    message.tool_calls?.some(
-      (tc) => tc.args && Object.keys(tc.args).length > 0,
-    );
-  const hasAnthropicToolCalls = !!anthropicStreamedToolCalls?.length;
-  const isToolResult = message?.type === "tool";
-
-  if (isToolResult && hideToolCalls) {
+  // 正式 transcript 区不再承担 tool result 的研发态展示；
+  // 用户显式要求隐藏工具调用时，这里保持和历史行为一致。
+  if (message.type === "tool" && hideToolCalls) {
     return null;
   }
 
   return (
     <div className="group mr-auto flex w-full items-start gap-2">
       <div className="flex w-full flex-col gap-2">
-        {isToolResult ? (
-          <>
-            <ToolResult message={message} />
-            <Interrupt
-              interrupt={threadInterrupt}
-              isLastMessage={isLastMessage}
-              hasNoAIOrToolMessages={hasNoAIOrToolMessages}
-            />
-          </>
-        ) : (
-          <>
-            {reasoningContent && (
-              <Thinking
-                content={reasoningContent}
-                isStreaming={isCurrentMessageStreaming}
-                thinkingDuration={!isCurrentMessageStreaming ? timing.thinking : undefined}
-              />
-            )}
+        {contentString.length > 0 ? (
+          <div className="py-1">
+            <MarkdownText>{contentString}</MarkdownText>
+          </div>
+        ) : null}
 
-            {contentString.length > 0 && (
-              <div className="py-1">
-                <MarkdownText>{contentString}</MarkdownText>
-              </div>
-            )}
+        <MessageBoundCard message={message} />
 
-            {!hideToolCalls && (
-              <>
-                {(hasToolCalls && toolCallsHaveContents && (
-                  <ToolCalls toolCalls={message.tool_calls} />
-                )) ||
-                  (hasAnthropicToolCalls && (
-                    <ToolCalls toolCalls={anthropicStreamedToolCalls} />
-                  )) ||
-                  (hasToolCalls && (
-                    <ToolCalls toolCalls={message.tool_calls} />
-                  ))}
-              </>
-            )}
-
-            {message && (
-              <CustomComponent
-                message={message}
-                thread={thread}
-              />
-            )}
-            <Interrupt
-              interrupt={threadInterrupt}
-              isLastMessage={isLastMessage}
-              hasNoAIOrToolMessages={hasNoAIOrToolMessages}
-            />
-            <div
-              className={cn(
-                "mr-auto flex items-center gap-2 transition-opacity",
-                "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
-              )}
-            >
-              <BranchSwitcher
-                branch={meta?.branch}
-                branchOptions={meta?.branchOptions}
-                onSelect={(branch) => thread.setBranch(branch)}
-                isLoading={isLoading}
-              />
-              <CommandBar
-                content={contentString}
-                isLoading={isLoading}
-                isAiMessage={true}
-                handleRegenerate={() => handleRegenerate(parentCheckpoint)}
-                duration={isCurrentMessageStreaming ? null : timing.answer}
-              />
-            </div>
-          </>
-        )}
+        <div
+          className={cn(
+            "mr-auto flex items-center gap-2 transition-opacity",
+            "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
+          )}
+        >
+          <BranchSwitcher
+            branch={meta?.branch}
+            branchOptions={meta?.branchOptions}
+            onSelect={(branch) => thread.setBranch(branch)}
+            isLoading={isLoading}
+          />
+          <CommandBar
+            content={contentString}
+            isLoading={isLoading}
+            isAiMessage={true}
+            handleRegenerate={() => handleRegenerate(parentCheckpoint)}
+            duration={isCurrentMessageStreaming ? null : duration}
+          />
+        </div>
       </div>
     </div>
   );
