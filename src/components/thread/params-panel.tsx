@@ -28,10 +28,14 @@
  *   be large complex objects)
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { ChevronDown, Settings2, AlertCircle } from "lucide-react";
+import {
+  buildStoredParamsDraft,
+  type StoredParamsDraft,
+} from "./params-storage";
 
 export interface CustomParams {
   configurable: Record<string, unknown> | null;
@@ -95,22 +99,43 @@ function safeJsonParse(text: string): { value: Record<string, unknown> | null; e
 
 interface ParamsPanelProps {
   params: CustomParams;
+  initialDraft?: StoredParamsDraft | null;
   onChange: (params: CustomParams) => void;
+  onDraftChange?: (draft: StoredParamsDraft) => void;
 }
 
-export function ParamsPanel({ params, onChange }: ParamsPanelProps) {
+export function ParamsPanel({
+  params,
+  initialDraft = null,
+  onChange,
+  onDraftChange,
+}: ParamsPanelProps) {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"configurable" | "input">("configurable");
 
   const [configurableText, setConfigurableText] = useState(() =>
-    params.configurable ? JSON.stringify(params.configurable, null, 2) : "",
+    initialDraft?.configurableText ??
+      (params.configurable ? JSON.stringify(params.configurable, null, 2) : ""),
   );
   const [inputText, setInputText] = useState(() =>
-    params.input ? JSON.stringify(params.input, null, 2) : "",
+    initialDraft?.inputText ??
+      (params.input ? JSON.stringify(params.input, null, 2) : ""),
   );
 
   const configurableParse = safeJsonParse(configurableText);
   const inputParse = safeJsonParse(inputText);
+
+  useEffect(() => {
+    // 这里同步保存“原始文本 + 当前可解析对象”：
+    // - 刷新页面/新建对话时要恢复用户上次输入；
+    // - 即使 JSON 暂时写坏了，也不能因为 parse 失败而把草稿丢掉。
+    onDraftChange?.(
+      buildStoredParamsDraft({
+        configurableText,
+        inputText,
+      }),
+    );
+  }, [configurableText, inputText, onDraftChange]);
 
   const handleConfigurableChange = (text: string) => {
     setConfigurableText(text);

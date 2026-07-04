@@ -68,24 +68,34 @@ export type ThinkingEventEnvelope = {
   payload?: Record<string, unknown>;
 };
 
-export type ThinkingDetailGroup = {
-  group_id: string;
-  agent_name: string;
-  agent_role: string;
-  kind: string;
-  items: string[];
+export type ThinkingFactEntry = {
+  kind: "fact";
+  entry_id?: string;
+  agent_name?: string;
+  agent_role?: string;
+  text?: string;
 };
+
+export type ThinkingReasoningEntry = {
+  kind: "reasoning";
+  entry_id: string;
+  agent_name?: string;
+  agent_role?: string;
+  text?: string;
+};
+
+export type ThinkingTraceEntry = ThinkingFactEntry | ThinkingReasoningEntry;
 
 export type ThinkingTraceStep = {
   id: string;
   title: string;
   status: "pending" | "active" | "completed" | "waiting_user" | "failed";
-  details?: Array<{
-    kind?: string;
-    agent_name?: string;
-    text?: string;
-  }>;
-  detail_groups?: ThinkingDetailGroup[];
+  // durable thinking 协议已经统一成一个 `entries[]`：
+  // - `fact` 表示稳定事实
+  // - `reasoning` 表示已经 durable 化的推理文本
+  //
+  // 这里不再暴露 `details/detail_groups`，避免前端继续维护两套合同。
+  entries?: ThinkingTraceEntry[];
 };
 
 export type ThinkingTraceSnapshot = {

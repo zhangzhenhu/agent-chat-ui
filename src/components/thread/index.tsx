@@ -7,6 +7,7 @@ import { type StateType } from "@/providers/Stream";
 import { useState, FormEvent, useEffect, useMemo } from "react";
 import { Button } from "../ui/button";
 import { Checkpoint, Message } from "@langchain/langgraph-sdk";
+import { type UIMessage } from "@langchain/langgraph-sdk/react-ui";
 import { AssistantMessage, AssistantMessageLoading } from "./messages/ai";
 import { HumanMessage } from "./messages/human";
 import {
@@ -49,6 +50,12 @@ import {
 } from "./artifact";
 import { AssistantSelector } from "./assistant-selector";
 import { ParamsPanel, type CustomParams } from "./params-panel";
+import {
+  getStoredParamsDraftText,
+  PARAMS_STORAGE_KEY,
+  parseStoredParamsDraft,
+  type StoredParamsDraft,
+} from "./params-storage";
 import {
   PendingInterruptCard,
 } from "./process-trace";
@@ -170,9 +177,50 @@ export function Thread() {
   const stream = useStreamContext();
   const { setShowConfig } = useConfigContext();
   const stateValues = stream.values as StateType | undefined;
+  const isLoading = stream.isLoading;
+
+  // 保护 thinking_trace UI 帧不被 child namespace 的空 values 快照挤掉。
+  //
+  // 真实复现：run 进行中，后端会发 `values|family-main|tools|food-need` 这类
+  // child subgraph 的 values 快照，它的 `ui` 是空数组。SDK 的 `stream.values`
+  // 是单值整体替换语义，会把 root 的 thinking_trace 帧挤掉，导致卡片"中途消失"
+  // （表现为 `stateValues.ui` 突然变空、`resolveThinkingTrace` 返回 null）。
+  //
+  // UI 的正确语义是"累积 + 显式 remove-ui 才移除"，不该被空快照覆盖。这里用
+  // ref 维护一份持续累积的 thinking_trace 帧：
+  // - 当前快照含 thinking_trace 帧 → 以当前为准（= 当前 run），清掉 ref 里旧 run 的帧；
+  // - 当前快照不含 且 run 仍在进行（isLoading）→ 用 ref 里同 run 的帧兜底补回（防 child 空快照挤掉）；
+  //   只在 isLoading 时兜底，是为了避免 run 结束后旧卡残留、以及新建会话时旧卡跟着出现。
+  // - threadId 切换（新建会话）时立刻清空 ref，绝不跨会话兜底。
+  const prevThinkingFramesRef = useRef<UIMessage[]>([]);
+  useEffect(() => {
+    prevThinkingFramesRef.current = [];
+  }, [threadId]);
+  const protectedUi = useMemo(() => {
+    const current = stateValues?.ui;
+    const isThinking = (it: unknown): it is UIMessage =>
+      typeof it === "object" &&
+      it !== null &&
+      (it as { type?: string }).type === "ui" &&
+      (it as { name?: string }).name === "thinking_trace";
+    const currentThinking = (current ?? []).filter(isThinking);
+
+    if (currentThinking.length > 0) {
+      // 当前 run 的 thinking_trace 帧：以它为准，清掉 ref 里属于其它 run 的旧帧。
+      prevThinkingFramesRef.current = currentThinking;
+      return current;
+    }
+
+    // 当前快照没有 thinking_trace：只在 run 仍在进行时兜底，避免 child 空快照挤掉卡。
+    // run 未在跑时（已结束 / 新建会话空窗）不兜底，卡该没就没。
+    if (isLoading && prevThinkingFramesRef.current.length > 0) {
+      return [...(current ?? []), ...prevThinkingFramesRef.current];
+    }
+    return current;
+  }, [stateValues?.ui, isLoading]);
+
   const messages = useMemo(() => getStateMessages(stateValues), [stateValues]);
   const interrupt = useMemo(() => getStateInterrupt(stateValues), [stateValues]);
-  const isLoading = stream.isLoading;
   const visibleMessages = useMemo(
     () =>
       messages.filter(
@@ -209,8 +257,8 @@ export function Thread() {
     [transcriptBlocks],
   );
   const thinkingTrace = useMemo(
-    () => resolveThinkingTrace(stateValues?.ui),
-    [stateValues],
+    () => resolveThinkingTrace(protectedUi),
+    [protectedUi],
   );
   const thinkingDisplay = useMemo(
     () =>
@@ -237,8 +285,20 @@ export function Thread() {
     configurable: null,
     input: null,
   });
+  const [paramsDraft, setParamsDraft] = useState<StoredParamsDraft | null>(null);
 
   /**
+   * Load cached parameters from localStorage first, then fall back to
+   * /default-params.json only when the browser has no saved draft.
+   *
+   * 这样可以同时满足：
+   * 1. 刷新页面后保留用户上次输入；
+   * 2. 新建对话后继续沿用同一组参数；
+   * 3. 首次打开页面时，仍然支持项目级默认参数文件。
+   *
+   * 注意这里缓存的是“原始 JSON 文本”，而不仅是 parse 后的对象：
+   * 用户可能正在编辑一个暂时不合法的 JSON，这种草稿也必须保住。
+   *
    * Load default parameters from /default-params.json on first mount.
    * This file lives in public/ and users can edit it to set their own
    * defaults for configurable and input fields. Saves users from having
@@ -251,6 +311,20 @@ export function Thread() {
   const [paramsKey, setParamsKey] = useState(0);
   useEffect(() => {
     if (paramsLoadedRef.current) return;
+    const cachedDraft =
+      typeof window !== "undefined"
+        ? parseStoredParamsDraft(window.localStorage.getItem(PARAMS_STORAGE_KEY))
+        : null;
+    if (cachedDraft) {
+      setParamsDraft(cachedDraft);
+      setCustomParams({
+        configurable: cachedDraft.configurable,
+        input: cachedDraft.input,
+      });
+      setParamsKey((k) => k + 1); // remount ParamsPanel with cached values
+      paramsLoadedRef.current = true;
+      return;
+    }
     fetch("/default-params.json")
       .then((res) => {
         if (!res.ok) throw new Error("Not found");
@@ -264,6 +338,13 @@ export function Thread() {
           ? data.input
           : null;
         if (configurable || input) {
+          const draft = {
+            configurableText: configurable ? JSON.stringify(configurable, null, 2) : "",
+            inputText: input ? JSON.stringify(input, null, 2) : "",
+            configurable,
+            input,
+          };
+          setParamsDraft(draft);
           setCustomParams({ configurable, input });
           setParamsKey((k) => k + 1); // remount ParamsPanel with loaded values
         }
@@ -273,6 +354,20 @@ export function Thread() {
       });
     paramsLoadedRef.current = true;
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !paramsDraft) {
+      return;
+    }
+
+    window.localStorage.setItem(
+      PARAMS_STORAGE_KEY,
+      getStoredParamsDraftText({
+        configurableText: paramsDraft.configurableText,
+        inputText: paramsDraft.inputText,
+      }),
+    );
+  }, [paramsDraft]);
 
   const lastError = useRef<string | undefined>(undefined);
 
@@ -647,7 +742,9 @@ export function Thread() {
                   <ParamsPanel
                     key={paramsKey}
                     params={customParams}
+                    initialDraft={paramsDraft}
                     onChange={setCustomParams}
+                    onDraftChange={setParamsDraft}
                   />
 
                   <div

@@ -28,17 +28,21 @@ test("isRootStreamNamespace rejects child tool namespaces", () => {
   );
 });
 
-test("shouldAcceptThinkingNamespace allows child tool namespaces", () => {
+test("shouldAcceptThinkingNamespace only allows root/main thinking namespaces into the user-facing card", () => {
   assert.equal(shouldAcceptThinkingNamespace(undefined), true);
   assert.equal(
     shouldAcceptThinkingNamespace(["family-main|tools|food-need"]),
-    true,
+    false,
   );
   assert.equal(
     shouldAcceptThinkingNamespace([
       "family-main:6c1e18e4-8b8f-54e4-1e9d-03654ecdef07",
       "family-main|tools|food-need",
     ]),
+    false,
+  );
+  assert.equal(
+    shouldAcceptThinkingNamespace(["family-main:6c1e18e4-8b8f-54e4-1e9d-03654ecdef07"]),
     true,
   );
 });

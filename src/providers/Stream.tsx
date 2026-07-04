@@ -186,7 +186,11 @@ const StreamSession = ({
         return;
       }
 
-      if (event && typeof event === "object" && event.kind === "thinking") {
+      if (
+        event &&
+        typeof event === "object" &&
+        (event.kind === "thinking" || event.type === "thinking")
+      ) {
         if (!shouldAcceptThinkingNamespace(options.namespace)) {
           return;
         }
