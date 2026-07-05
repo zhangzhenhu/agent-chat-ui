@@ -191,7 +191,13 @@ const StreamSession = ({
         typeof event === "object" &&
         (event.kind === "thinking" || event.type === "thinking")
       ) {
-        if (!shouldAcceptThinkingNamespace(options.namespace)) {
+        const eventName = (event as { event_name?: string }).event_name ?? "";
+        // thinking.entry_added 是后台实时更新机制（如“正在调用 xxx 能力/工具”），
+        // 不管 root 还是 child 都要收，用于实时刷新思考卡。
+        // 其他 thinking 事件（reasoning_delta/phase_started/completed）按“只收 root”
+        // 规则过滤 child——避免把 child specialist 的原始思考流暴露给用户主卡。
+        const isAlwaysAccept = eventName === "thinking.entry_added";
+        if (!isAlwaysAccept && !shouldAcceptThinkingNamespace(options.namespace)) {
           return;
         }
         setThinkingState((prev) =>

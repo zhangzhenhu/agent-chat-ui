@@ -13,6 +13,11 @@ import { MarkdownText } from "../markdown-text";
 import { cn } from "@/lib/utils";
 import { useArtifact } from "../artifact";
 import { clientComponents } from "../generative-ui/component-map";
+import {
+  GenerativeComponentShell,
+  GenericUIFallback,
+} from "../generative-ui/component-shell";
+import { getMessageBoundUiMessages } from "../message-bound-ui";
 import type { StateType } from "@/providers/Stream";
 
 /**
@@ -68,20 +73,16 @@ function useAnswerTiming(
 
 function MessageBoundCard({
   message,
+  ui,
 }: {
   message: Message;
+  ui?: UIMessage[];
 }) {
   const thread = useStreamContext();
   const artifact = useArtifact();
-  const uiMessages = (((thread.values as StateType | undefined)?.ui ?? []).filter(
-    (item): item is UIMessage =>
-      !!item &&
-      typeof item === "object" &&
-      "type" in item &&
-      item.type === "ui" &&
-      item.name === "card" &&
-      item.metadata?.message_id === message.id,
-  )) as UIMessage[];
+  // 优先用传入的 protectedUi（防 child 空快照挤掉 UI 帧），否则回退到 SDK 原始 values.ui。
+  const uiSource = ui ?? ((thread.values as StateType | undefined)?.ui ?? []);
+  const uiMessages = getMessageBoundUiMessages(uiSource as UIMessage[], message);
 
   if (uiMessages.length === 0) {
     return null;
@@ -89,15 +90,30 @@ function MessageBoundCard({
 
   return (
     <div className="flex flex-col gap-3">
-      {uiMessages.map((uiMessage) => (
-        <LoadExternalComponent
-          key={uiMessage.id}
-          stream={thread as Parameters<typeof LoadExternalComponent>[0]["stream"]}
-          message={uiMessage}
-          meta={{ ui: uiMessage, artifact }}
-          components={clientComponents}
-        />
-      ))}
+      {uiMessages.map((uiMessage) => {
+        const componentName =
+          typeof uiMessage.name === "string" ? uiMessage.name : "";
+        if (componentName in clientComponents) {
+          return (
+            <LoadExternalComponent
+              key={uiMessage.id}
+              stream={thread as Parameters<typeof LoadExternalComponent>[0]["stream"]}
+              message={uiMessage}
+              meta={{ ui: uiMessage, artifact }}
+              components={clientComponents}
+            />
+          );
+        }
+
+        return (
+          <GenerativeComponentShell
+            key={uiMessage.id}
+            title={componentName || "Generated UI"}
+          >
+            <GenericUIFallback value={uiMessage.props ?? uiMessage} />
+          </GenerativeComponentShell>
+        );
+      })}
     </div>
   );
 }
@@ -106,10 +122,12 @@ export function AssistantMessage({
   message,
   isLoading,
   handleRegenerate,
+  ui,
 }: {
   message: Message;
   isLoading: boolean;
   handleRegenerate: (parentCheckpoint: Checkpoint | null | undefined) => void;
+  ui?: UIMessage[];
 }) {
   const thread = useStreamContext();
   const threadValues = thread.values as StateType | undefined;
@@ -143,7 +161,7 @@ export function AssistantMessage({
           </div>
         ) : null}
 
-        <MessageBoundCard message={message} />
+        <MessageBoundCard message={message} ui={ui} />
 
         <div
           className={cn(

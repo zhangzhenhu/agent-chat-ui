@@ -65,6 +65,7 @@ import {
   resolveThinkingTrace,
   splitTranscriptBlocksForThinking,
 } from "./process-trace-helpers";
+import { hasMessageBoundUi } from "./message-bound-ui";
 import { getContentString } from "./utils";
 import { ThinkingTraceCard } from "./thinking-trace-card";
 import { resolveLatestAnalyticsRun } from "./analytics-state";
@@ -179,42 +180,59 @@ export function Thread() {
   const stateValues = stream.values as StateType | undefined;
   const isLoading = stream.isLoading;
 
-  // 保护 thinking_trace UI 帧不被 child namespace 的空 values 快照挤掉。
+  // 保护 UI 帧不被 child namespace 的空 values 快照挤掉。
   //
   // 真实复现：run 进行中，后端会发 `values|family-main|tools|food-need` 这类
   // child subgraph 的 values 快照，它的 `ui` 是空数组。SDK 的 `stream.values`
-  // 是单值整体替换语义，会把 root 的 thinking_trace 帧挤掉，导致卡片"中途消失"
-  // （表现为 `stateValues.ui` 突然变空、`resolveThinkingTrace` 返回 null）。
+  // 是单值整体替换语义，会把 root 的 UI 帧（thinking_trace 卡 / card）挤掉，
+  // 导致卡片"中途消失"或缴费卡/确认卡不显示。
   //
   // UI 的正确语义是"累积 + 显式 remove-ui 才移除"，不该被空快照覆盖。这里用
-  // ref 维护一份持续累积的 thinking_trace 帧：
-  // - 当前快照含 thinking_trace 帧 → 以当前为准（= 当前 run），清掉 ref 里旧 run 的帧；
-  // - 当前快照不含 且 run 仍在进行（isLoading）→ 用 ref 里同 run 的帧兜底补回（防 child 空快照挤掉）；
-  //   只在 isLoading 时兜底，是为了避免 run 结束后旧卡残留、以及新建会话时旧卡跟着出现。
+  // ref 维护一份持续累积的 UI 帧（按 id upsert）：
+  // - 当前快照有 UI 帧 → upsert 进 ref（同 id 覆盖、新 id 追加）；新 run 信号
+  //   （thinking_trace 帧的 id 变化）触发清掉旧 run 的帧，避免跨 run 残留；
+  // - 当前快照没有 UI 帧 且 run 仍在进行（isLoading）→ 用 ref 兜底补回；
+  //   只在 isLoading 时兜底，避免 run 结束后旧卡残留、新建会话时旧卡跟着出现；
   // - threadId 切换（新建会话）时立刻清空 ref，绝不跨会话兜底。
-  const prevThinkingFramesRef = useRef<UIMessage[]>([]);
+  const prevUiFramesRef = useRef<UIMessage[]>([]);
   useEffect(() => {
-    prevThinkingFramesRef.current = [];
+    prevUiFramesRef.current = [];
   }, [threadId]);
   const protectedUi = useMemo(() => {
-    const current = stateValues?.ui;
-    const isThinking = (it: unknown): it is UIMessage =>
+    const current = (stateValues?.ui ?? []) as UIMessage[];
+    const isUi = (it: unknown): it is UIMessage =>
       typeof it === "object" &&
       it !== null &&
-      (it as { type?: string }).type === "ui" &&
-      (it as { name?: string }).name === "thinking_trace";
-    const currentThinking = (current ?? []).filter(isThinking);
+      (it as { type?: string }).type === "ui";
+    const currentUi = current.filter(isUi);
 
-    if (currentThinking.length > 0) {
-      // 当前 run 的 thinking_trace 帧：以它为准，清掉 ref 里属于其它 run 的旧帧。
-      prevThinkingFramesRef.current = currentThinking;
-      return current;
+    if (currentUi.length > 0) {
+      // 新 run 信号：thinking_trace 帧的 id 形如 thinking:<run_id>，run 切换时
+      // 新 id 出现 → 清掉 ref 里不属于当前 run 的旧帧（thinking_trace + 跟随它的 card）。
+      const currentThinkingIds = new Set(
+        currentUi
+          .filter((it) => it.name === "thinking_trace")
+          .map((it) => it.id),
+      );
+      if (currentThinkingIds.size > 0) {
+        // 保留 ref 里当前快照也有的帧（同 id），丢掉旧 run 的。
+        prevUiFramesRef.current = prevUiFramesRef.current.filter(
+          (it) => currentThinkingIds.has(it.id) || it.name !== "thinking_trace",
+        );
+      }
+      // upsert 当前快照的 UI 帧（同 id 覆盖、新 id 追加）。
+      const merged = new Map<string, UIMessage>();
+      for (const it of prevUiFramesRef.current) merged.set(it.id, it);
+      for (const it of currentUi) merged.set(it.id, it);
+      const next = [...merged.values()];
+      prevUiFramesRef.current = next;
+      return next;
     }
 
-    // 当前快照没有 thinking_trace：只在 run 仍在进行时兜底，避免 child 空快照挤掉卡。
+    // 当前快照没有 UI 帧：只在 run 仍在进行时兜底，避免 child 空快照挤掉卡。
     // run 未在跑时（已结束 / 新建会话空窗）不兜底，卡该没就没。
-    if (isLoading && prevThinkingFramesRef.current.length > 0) {
-      return [...(current ?? []), ...prevThinkingFramesRef.current];
+    if (isLoading && prevUiFramesRef.current.length > 0) {
+      return prevUiFramesRef.current;
     }
     return current;
   }, [stateValues?.ui, isLoading]);
@@ -228,6 +246,11 @@ export function Thread() {
       ),
     [messages],
   );
+  // transcript 里的 AI message 保留条件：有文本，或绑定了 UI 卡（如需求确认卡
+  // 这种 `subagent_ui_anchor`：content 为空但 `card.metadata.message_id === message.id`）。
+  // 对齐 LangGraph 官方模式——AI message 一律渲染，文本用 trim() 守卫，绑定的 UI 卡
+  // 始终挂在该 message 下。若按“content 非空”过滤，会把空文本但绑了 card 的 anchor
+  // message 整个丢掉，导致 card 不显示。
   const transcriptMessages = useMemo(
     () =>
       visibleMessages.filter((message) => {
@@ -237,9 +260,12 @@ export function Thread() {
         if (message.type !== "ai") {
           return false;
         }
-        return getContentString(message.content).trim().length > 0;
+        if (getContentString(message.content).trim().length > 0) {
+          return true;
+        }
+        return hasMessageBoundUi(protectedUi, message);
       }),
-    [visibleMessages],
+    [visibleMessages, protectedUi],
   );
   const internalTraceEntries = useMemo(
     () => getInternalTraceEntries(visibleMessages, isLoading),
@@ -685,6 +711,7 @@ export function Thread() {
                           message={block.message}
                           isLoading={isLoading}
                           handleRegenerate={handleRegenerate}
+                          ui={protectedUi}
                         />
                     );
                   })}
@@ -715,6 +742,7 @@ export function Thread() {
                         message={block.message}
                         isLoading={isLoading}
                         handleRegenerate={handleRegenerate}
+                        ui={protectedUi}
                       />
                     );
                   })}
