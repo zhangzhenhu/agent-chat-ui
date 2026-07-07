@@ -723,6 +723,8 @@ export function Thread() {
                       analyticsEvents={latestAnalyticsRun.events}
                       analyticsRunId={latestAnalyticsRun.runId}
                       runtimeTraceEntries={internalTraceEntries}
+                      threadState={stateValues ?? null}
+                      threadId={threadId}
                     />
                   ) : null}
                   {transcriptLayout.afterThinking.map((block, index) => {

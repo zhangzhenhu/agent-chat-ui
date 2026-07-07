@@ -111,14 +111,14 @@ export function RuntimeTraceSheet({
           <span className="ml-1">Runtime Trace</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[85vh] max-w-3xl overflow-hidden p-0">
+      <DialogContent className="flex h-[85vh] w-[min(96vw,1280px)] max-w-none min-w-[20rem] resize flex-col gap-0 overflow-auto p-0 sm:min-w-[48rem]">
         <DialogHeader className="border-b border-slate-200 px-6 py-4">
           <DialogTitle>Runtime Trace</DialogTitle>
           <div className="text-xs text-slate-500">
             {summary || "Captured intermediate runtime details"}
           </div>
         </DialogHeader>
-        <div className="flex max-h-[70vh] flex-col gap-3 overflow-y-auto px-6 py-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-4">
           {entries.map((entry, index) => (
             <RuntimeTraceRow
               key={entry.key}

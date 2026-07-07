@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { BarChart3, ChevronDown, ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { SyntaxHighlighter } from "@/components/thread/syntax-highlighter";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 
 import type { AnalyticsEventEnvelope } from "../analytics-types";
+import { formatAnalyticsEventJson } from "./analytics-sheet-format";
 
 type AnalyticsSheetProps = {
   events: AnalyticsEventEnvelope[];
@@ -35,38 +37,6 @@ function buildSummary(event: AnalyticsEventEnvelope): string {
   return [phaseLabel || eventName, componentName, status].filter(Boolean).join(" · ");
 }
 
-function buildDetailLines(event: AnalyticsEventEnvelope): Array<[string, string]> {
-  const lines: Array<[string, string]> = [
-    ["type", event.type ?? ""],
-    ["event_name", event.event_name ?? ""],
-    ["event_scope", event.event_scope ?? ""],
-    ["event_phase", event.event_phase ?? ""],
-    ["emitted_at", event.emitted_at ?? ""],
-    ["run_id", event.context?.run_id ?? ""],
-    ["thread_id", event.context?.thread_id ?? ""],
-    ["graph_id", event.context?.graph_id ?? ""],
-    ["checkpoint_ns", event.context?.checkpoint_ns ?? ""],
-    ["assistant_id", event.context?.assistant_id ?? ""],
-    ["tool_call_id", event.context?.tool_call_id ?? ""],
-    ["parent_tool_call_id", event.context?.parent_tool_call_id ?? ""],
-    ["component", event.subject?.component_name ?? ""],
-    ["agent", event.subject?.agent_name ?? ""],
-    ["agent_role", event.subject?.agent_role ?? ""],
-    ["domain", event.subject?.domain ?? ""],
-    ["graph_scope", event.subject?.graph_scope ?? ""],
-    ["scene", event.business?.scene ?? ""],
-    ["request_kind", event.business?.request_kind ?? ""],
-    ["input", JSON.stringify(event.input ?? {}, null, 2)],
-    ["output", JSON.stringify(event.output ?? {}, null, 2)],
-    ["state", JSON.stringify(event.state ?? {}, null, 2)],
-    ["metrics", JSON.stringify(event.metrics ?? {}, null, 2)],
-    ["error", JSON.stringify(event.error ?? null, null, 2)],
-    ["state_context", JSON.stringify(event.state_context ?? {}, null, 2)],
-    ["payload", JSON.stringify(event.payload ?? {}, null, 2)],
-  ];
-  return lines.filter(([, value]) => value.trim().length > 0);
-}
-
 function AnalyticsEventRow({
   event,
   defaultOpen = false,
@@ -76,7 +46,7 @@ function AnalyticsEventRow({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const summary = useMemo(() => buildSummary(event), [event]);
-  const details = useMemo(() => buildDetailLines(event), [event]);
+  const formattedEvent = useMemo(() => formatAnalyticsEventJson(event), [event]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -102,17 +72,25 @@ function AnalyticsEventRow({
 
       {open ? (
         <div className="border-t border-slate-200 bg-slate-50/70 px-4 py-3">
-          <div className="flex flex-col gap-3">
-            {details.map(([label, value]) => (
-              <div key={label} className="grid gap-1">
-                <div className="text-[11px] font-semibold tracking-[0.12em] text-slate-500 uppercase">
-                  {label}
-                </div>
-                <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-xl border border-slate-200 bg-white p-3 text-xs leading-relaxed text-slate-700">
-                  {value}
-                </pre>
-              </div>
-            ))}
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-[#0b1020]">
+            <div className="border-b border-white/10 px-4 py-2 text-[11px] font-semibold tracking-[0.12em] text-slate-300 uppercase">
+              Event JSON
+            </div>
+            <div className="max-h-[60vh] overflow-auto overscroll-contain text-xs leading-6">
+              <SyntaxHighlighter
+                language="js"
+                className="text-xs"
+                preTag="div"
+                showLineNumbers
+                wrapLongLines={false}
+                customStyle={{
+                  padding: "1rem",
+                  overflow: "visible",
+                }}
+              >
+                {formattedEvent}
+              </SyntaxHighlighter>
+            </div>
           </div>
         </div>
       ) : null}
@@ -130,17 +108,17 @@ export function AnalyticsSheet({ events, runId }: AnalyticsSheetProps) {
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm" className="h-8 px-2 text-slate-500">
           <BarChart3 className="size-4" />
-          <span className="ml-1">Analytics</span>
+          <span className="ml-1">Telemetry</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[85vh] max-w-3xl overflow-hidden p-0">
+      <DialogContent className="flex h-[85vh] w-[min(96vw,1280px)] max-w-none min-w-[20rem] resize flex-col gap-0 overflow-auto p-0 sm:min-w-[48rem]">
         <DialogHeader className="border-b border-slate-200 px-6 py-4">
-          <DialogTitle>Analytics Trace</DialogTitle>
+          <DialogTitle>Telemetry Trace</DialogTitle>
           {runId ? (
             <div className="text-xs text-slate-500">Run: {runId}</div>
           ) : null}
         </DialogHeader>
-        <div className="flex max-h-[70vh] flex-col gap-3 overflow-y-auto px-6 py-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-4">
           {events.map((event, index) => (
             <AnalyticsEventRow
               key={`${event.event_name ?? "analytics"}-${event.emitted_at ?? index}-${index}`}

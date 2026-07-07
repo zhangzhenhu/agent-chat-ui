@@ -29,6 +29,7 @@ import {
 import { getThinkingStatusLabel } from "./thinking-trace-labels";
 import { AnalyticsSheet } from "./messages/analytics-sheet";
 import { RuntimeTraceSheet } from "./messages/runtime-trace-sheet";
+import { ThreadStateSheet } from "./messages/thread-state-sheet";
 import type { AnalyticsEventEnvelope } from "./analytics-types";
 import type { InternalTraceEntry } from "./process-trace";
 
@@ -39,6 +40,8 @@ type ThinkingTraceCardProps = {
   analyticsEvents?: AnalyticsEventEnvelope[];
   analyticsRunId?: string | null;
   runtimeTraceEntries?: InternalTraceEntry[];
+  threadState?: unknown;
+  threadId?: string | null;
 };
 
 function statusIcon(status: ThinkingTraceStep["status"]) {
@@ -156,6 +159,8 @@ export function ThinkingTraceCard({
   analyticsEvents = [],
   analyticsRunId,
   runtimeTraceEntries = [],
+  threadState,
+  threadId,
 }: ThinkingTraceCardProps) {
   const steps = buildVisibleThinkingSteps(
     Array.isArray(snapshot.steps) ? snapshot.steps : [],
@@ -223,6 +228,10 @@ export function ThinkingTraceCard({
           )}
         </button>
         <div className="flex items-center gap-1">
+          <ThreadStateSheet
+            state={threadState}
+            threadId={threadId}
+          />
           {runtimeTraceEntries.length > 0 ? (
             <RuntimeTraceSheet entries={runtimeTraceEntries} />
           ) : null}
