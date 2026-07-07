@@ -11,28 +11,62 @@ const runtimeTraceSheetSource = await import("node:fs/promises").then((fs) =>
 test("runtime trace dialog is wider and resizable", () => {
   assert.match(
     runtimeTraceSheetSource,
-    /w-\[min\(96vw,1280px\)\].*max-w-none.*resize/s,
+    /!flex h-\[85vh\] w-\[min\(96vw,1280px\)\].*max-w-none.*resize.*overflow-y-scroll/s,
   );
 });
 
 test("runtime trace list uses flexible height with inner scrolling", () => {
   assert.match(
     runtimeTraceSheetSource,
-    /min-h-0 flex-1 flex-col gap-3 overflow-y-auto/,
+    /DialogContent[\s\S]*overflow-y-scroll[\s\S]*\[&::-webkit-scrollbar\]:w-2/,
   );
   assert.match(
     runtimeTraceSheetSource,
-    /\[&::-webkit-scrollbar\]:w-2/,
+    /style=\{\{ scrollbarGutter: "stable" \}\}/,
   );
   assert.match(
     runtimeTraceSheetSource,
-    /\[&::-webkit-scrollbar-thumb\]:rounded-full/,
+    /sticky top-0 z-10 border-b border-slate-200 bg-white/,
+  );
+});
+
+test("runtime trace rows do not shrink when the dialog viewport is crowded", () => {
+  assert.match(
+    runtimeTraceSheetSource,
+    /className="shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white"/,
+  );
+  assert.match(
+    runtimeTraceSheetSource,
+    /className="flex shrink-0 flex-col gap-3 px-6 py-4"/,
   );
 });
 
 test("runtime trace row body constrains tall payloads with its own scroller", () => {
   assert.match(
     runtimeTraceSheetSource,
-    /max-h-\[60vh\] overflow-auto overscroll-contain/,
+    /max-h-\[60vh\].*overflow-x-auto.*overflow-y-scroll.*overscroll-contain/s,
+  );
+  assert.match(
+    runtimeTraceSheetSource,
+    /select-text/,
+  );
+  assert.match(
+    runtimeTraceSheetSource,
+    /scrollbarGutter: "stable both-edges"/,
+  );
+});
+
+test("runtime trace row body exposes a copy action", () => {
+  assert.match(
+    runtimeTraceSheetSource,
+    /Copy JSON/,
+  );
+  assert.match(
+    runtimeTraceSheetSource,
+    /navigator\.clipboard\.writeText/,
+  );
+  assert.match(
+    runtimeTraceSheetSource,
+    /handleCopy/,
   );
 });

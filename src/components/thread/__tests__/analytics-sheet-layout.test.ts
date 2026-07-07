@@ -22,14 +22,18 @@ const syntaxHighlighterSource = await import(
 test("analytics sheet dialog is wider and resizable", () => {
   assert.match(
     analyticsSheetSource,
-    /w-\[min\(96vw,1280px\)\].*max-w-none.*resize/s,
+    /!flex h-\[85vh\] w-\[min\(96vw,1280px\)\].*max-w-none.*resize.*overflow-y-scroll/s,
   );
 });
 
 test("analytics sheet json viewport owns scrolling and shows line numbers", () => {
   assert.match(
     analyticsSheetSource,
-    /max-h-\[60vh\] overflow-auto overscroll-contain/,
+    /max-h-\[60vh\].*overflow-x-auto.*overflow-y-scroll.*overscroll-contain/s,
+  );
+  assert.match(
+    analyticsSheetSource,
+    /select-text/,
   );
   assert.match(
     analyticsSheetSource,
@@ -39,14 +43,56 @@ test("analytics sheet json viewport owns scrolling and shows line numbers", () =
     analyticsSheetSource,
     /\[&::-webkit-scrollbar-thumb\]:rounded-full/,
   );
+  assert.match(
+    analyticsSheetSource,
+    /scrollbarGutter: "stable both-edges"/,
+  );
+  assert.match(
+    analyticsSheetSource,
+    /padding: "1rem 1rem 2rem"/,
+  );
   assert.match(analyticsSheetSource, /showLineNumbers/);
   assert.match(analyticsSheetSource, /preTag="div"/);
+});
+
+test("analytics event json header exposes a copy action", () => {
+  assert.match(
+    analyticsSheetSource,
+    /Copy JSON/,
+  );
+  assert.match(
+    analyticsSheetSource,
+    /navigator\.clipboard\.writeText/,
+  );
+  assert.match(
+    analyticsSheetSource,
+    /handleCopy/,
+  );
 });
 
 test("analytics sheet event list exposes a visible vertical scroller", () => {
   assert.match(
     analyticsSheetSource,
-    /overflow-y-auto px-6 py-4 \[&::-webkit-scrollbar\]:w-2/,
+    /DialogContent[\s\S]*overflow-y-scroll[\s\S]*\[&::-webkit-scrollbar\]:w-2/,
+  );
+  assert.match(
+    analyticsSheetSource,
+    /style=\{\{ scrollbarGutter: "stable" \}\}/,
+  );
+  assert.match(
+    analyticsSheetSource,
+    /sticky top-0 z-10 border-b border-slate-200 bg-white/,
+  );
+});
+
+test("analytics rows do not shrink when the dialog viewport is crowded", () => {
+  assert.match(
+    analyticsSheetSource,
+    /className="shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white"/,
+  );
+  assert.match(
+    analyticsSheetSource,
+    /className="flex shrink-0 flex-col gap-3 px-6 py-4"/,
   );
 });
 

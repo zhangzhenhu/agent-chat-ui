@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Activity, ChevronDown, ChevronRight } from "lucide-react";
+import { Activity, CheckIcon, ChevronDown, ChevronRight, CopyIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +15,17 @@ import {
 import type { InternalTraceEntry } from "../process-trace";
 import { Thinking } from "./thinking";
 import { ToolCalls, ToolResult } from "./tool-calls";
+
+function formatRuntimeEntryPayload(entry: InternalTraceEntry): string {
+  if (entry.kind === "thinking") {
+    return String(entry.payload ?? "");
+  }
+  try {
+    return JSON.stringify(entry.payload ?? null, null, 2);
+  } catch {
+    return String(entry.payload ?? "");
+  }
+}
 
 function buildRuntimeTraceSummary(entries: InternalTraceEntry[]): string {
   const counts = {
@@ -44,6 +55,7 @@ function RuntimeTraceRow({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [copied, setCopied] = useState(false);
   const title = useMemo(() => {
     if (entry.kind === "tool_call") {
       return "Tool Call";
@@ -53,9 +65,17 @@ function RuntimeTraceRow({
     }
     return "Thinking";
   }, [entry.kind]);
+  const formattedPayload = useMemo(() => formatRuntimeEntryPayload(entry), [entry]);
+
+  const handleCopy = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    await navigator.clipboard.writeText(formattedPayload);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+    <div className="shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
       <button
         type="button"
         className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left"
@@ -74,7 +94,22 @@ function RuntimeTraceRow({
 
       {open ? (
         <div className="border-t border-slate-200 bg-slate-50/70 px-4 py-3">
-          <div className="max-h-[60vh] overflow-auto overscroll-contain [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
+          <div className="mb-3 flex items-center justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-[11px] text-slate-500 hover:bg-slate-200/70 hover:text-slate-900"
+              onClick={handleCopy}
+            >
+              {copied ? <CheckIcon className="size-3.5 text-emerald-500" /> : <CopyIcon className="size-3.5" />}
+              <span>Copy JSON</span>
+            </Button>
+          </div>
+          <div
+            className="max-h-[60vh] select-text overflow-x-auto overflow-y-scroll overscroll-contain [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent"
+            style={{ scrollbarGutter: "stable both-edges" }}
+          >
             {entry.kind === "thinking" ? (
               <Thinking
                 content={String(entry.payload ?? "")}
@@ -113,14 +148,17 @@ export function RuntimeTraceSheet({
           <span className="ml-1">Runtime Trace</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="flex h-[85vh] w-[min(96vw,1280px)] max-w-none min-w-[20rem] resize flex-col gap-0 overflow-hidden p-0 sm:min-w-[48rem]">
-        <DialogHeader className="border-b border-slate-200 px-6 py-4">
+      <DialogContent
+        className="!flex h-[85vh] w-[min(96vw,1280px)] max-w-none min-w-[20rem] resize flex-col gap-0 overflow-y-scroll p-0 pr-2 sm:min-w-[48rem] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent"
+        style={{ scrollbarGutter: "stable" }}
+      >
+        <DialogHeader className="sticky top-0 z-10 border-b border-slate-200 bg-white px-6 py-4">
           <DialogTitle>Runtime Trace</DialogTitle>
           <div className="text-xs text-slate-500">
             {summary || "Captured intermediate runtime details"}
           </div>
         </DialogHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-4 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
+        <div className="flex shrink-0 flex-col gap-3 px-6 py-4">
           {entries.map((entry, index) => (
             <RuntimeTraceRow
               key={entry.key}
