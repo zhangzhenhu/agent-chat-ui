@@ -76,7 +76,7 @@ function AnalyticsEventRow({
             <div className="border-b border-white/10 px-4 py-2 text-[11px] font-semibold tracking-[0.12em] text-slate-300 uppercase">
               Event JSON
             </div>
-            <div className="max-h-[60vh] overflow-auto overscroll-contain text-xs leading-6">
+            <div className="max-h-[60vh] overflow-auto overscroll-contain text-xs leading-6 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-500/70 [&::-webkit-scrollbar-track]:bg-slate-900/60">
               <SyntaxHighlighter
                 language="js"
                 className="text-xs"
@@ -111,14 +111,14 @@ export function AnalyticsSheet({ events, runId }: AnalyticsSheetProps) {
           <span className="ml-1">Telemetry</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="flex h-[85vh] w-[min(96vw,1280px)] max-w-none min-w-[20rem] resize flex-col gap-0 overflow-auto p-0 sm:min-w-[48rem]">
+      <DialogContent className="flex h-[85vh] w-[min(96vw,1280px)] max-w-none min-w-[20rem] resize flex-col gap-0 overflow-hidden p-0 sm:min-w-[48rem]">
         <DialogHeader className="border-b border-slate-200 px-6 py-4">
           <DialogTitle>Telemetry Trace</DialogTitle>
           {runId ? (
             <div className="text-xs text-slate-500">Run: {runId}</div>
           ) : null}
         </DialogHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-4 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
           {events.map((event, index) => (
             <AnalyticsEventRow
               key={`${event.event_name ?? "analytics"}-${event.emitted_at ?? index}-${index}`}

@@ -74,18 +74,20 @@ function RuntimeTraceRow({
 
       {open ? (
         <div className="border-t border-slate-200 bg-slate-50/70 px-4 py-3">
-          {entry.kind === "thinking" ? (
-            <Thinking
-              content={String(entry.payload ?? "")}
-              isStreaming={entry.isStreaming}
-            />
-          ) : null}
-          {entry.kind === "tool_call" ? (
-            <ToolCalls toolCalls={entry.payload as never} />
-          ) : null}
-          {entry.kind === "tool_result" ? (
-            <ToolResult message={entry.payload as never} />
-          ) : null}
+          <div className="max-h-[60vh] overflow-auto overscroll-contain [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
+            {entry.kind === "thinking" ? (
+              <Thinking
+                content={String(entry.payload ?? "")}
+                isStreaming={entry.isStreaming}
+              />
+            ) : null}
+            {entry.kind === "tool_call" ? (
+              <ToolCalls toolCalls={entry.payload as never} />
+            ) : null}
+            {entry.kind === "tool_result" ? (
+              <ToolResult message={entry.payload as never} />
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>
@@ -111,14 +113,14 @@ export function RuntimeTraceSheet({
           <span className="ml-1">Runtime Trace</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="flex h-[85vh] w-[min(96vw,1280px)] max-w-none min-w-[20rem] resize flex-col gap-0 overflow-auto p-0 sm:min-w-[48rem]">
+      <DialogContent className="flex h-[85vh] w-[min(96vw,1280px)] max-w-none min-w-[20rem] resize flex-col gap-0 overflow-hidden p-0 sm:min-w-[48rem]">
         <DialogHeader className="border-b border-slate-200 px-6 py-4">
           <DialogTitle>Runtime Trace</DialogTitle>
           <div className="text-xs text-slate-500">
             {summary || "Captured intermediate runtime details"}
           </div>
         </DialogHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-6 py-4 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
           {entries.map((entry, index) => (
             <RuntimeTraceRow
               key={entry.key}

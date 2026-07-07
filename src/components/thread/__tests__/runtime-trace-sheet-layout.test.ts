@@ -20,4 +20,19 @@ test("runtime trace list uses flexible height with inner scrolling", () => {
     runtimeTraceSheetSource,
     /min-h-0 flex-1 flex-col gap-3 overflow-y-auto/,
   );
+  assert.match(
+    runtimeTraceSheetSource,
+    /\[&::-webkit-scrollbar\]:w-2/,
+  );
+  assert.match(
+    runtimeTraceSheetSource,
+    /\[&::-webkit-scrollbar-thumb\]:rounded-full/,
+  );
+});
+
+test("runtime trace row body constrains tall payloads with its own scroller", () => {
+  assert.match(
+    runtimeTraceSheetSource,
+    /max-h-\[60vh\] overflow-auto overscroll-contain/,
+  );
 });

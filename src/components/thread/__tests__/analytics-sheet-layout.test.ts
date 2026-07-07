@@ -31,8 +31,23 @@ test("analytics sheet json viewport owns scrolling and shows line numbers", () =
     analyticsSheetSource,
     /max-h-\[60vh\] overflow-auto overscroll-contain/,
   );
+  assert.match(
+    analyticsSheetSource,
+    /\[&::-webkit-scrollbar\]:w-2/,
+  );
+  assert.match(
+    analyticsSheetSource,
+    /\[&::-webkit-scrollbar-thumb\]:rounded-full/,
+  );
   assert.match(analyticsSheetSource, /showLineNumbers/);
   assert.match(analyticsSheetSource, /preTag="div"/);
+});
+
+test("analytics sheet event list exposes a visible vertical scroller", () => {
+  assert.match(
+    analyticsSheetSource,
+    /overflow-y-auto px-6 py-4 \[&::-webkit-scrollbar\]:w-2/,
+  );
 });
 
 test("syntax highlighter supports analytics-specific viewport overrides", () => {
