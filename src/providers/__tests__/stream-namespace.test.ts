@@ -46,3 +46,14 @@ test("shouldAcceptThinkingNamespace only allows root/main thinking namespaces in
     true,
   );
 });
+
+test("child telemetry namespaces remain identifiable as child even though telemetry now accepts them upstream", () => {
+  assert.equal(
+    isRootStreamNamespace(["family-main|tools|food-need"]),
+    false,
+  );
+  assert.equal(
+    shouldAcceptThinkingNamespace(["family-main|tools|food-need"]),
+    false,
+  );
+});

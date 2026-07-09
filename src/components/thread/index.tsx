@@ -68,7 +68,7 @@ import {
 import { hasMessageBoundUi } from "./message-bound-ui";
 import { getContentString } from "./utils";
 import { ThinkingTraceCard } from "./thinking-trace-card";
-import { resolveLatestAnalyticsRun } from "./analytics-state";
+import { resolveTelemetryTimeline } from "./analytics-state";
 import { resolveThinkingTraceDisplay } from "./thinking-trace-display";
 
 function StickyToBottomContent(props: {
@@ -294,8 +294,8 @@ export function Thread() {
       }),
     [thinkingTrace, stream.thinkingState],
   );
-  const latestAnalyticsRun = useMemo(
-    () => resolveLatestAnalyticsRun(stream.analyticsState),
+  const telemetryTimeline = useMemo(
+    () => resolveTelemetryTimeline(stream.analyticsState),
     [stream.analyticsState],
   );
 
@@ -720,8 +720,7 @@ export function Thread() {
                       snapshot={thinkingDisplay.snapshot}
                       runBucket={thinkingDisplay.runBucket}
                       isLoading={isLoading}
-                      analyticsEvents={latestAnalyticsRun.events}
-                      analyticsRunId={latestAnalyticsRun.runId}
+                      analyticsEvents={telemetryTimeline.events}
                       runtimeTraceEntries={internalTraceEntries}
                       threadState={stateValues ?? null}
                       threadId={threadId}

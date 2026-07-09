@@ -1,24 +1,20 @@
 import type { AnalyticsEventEnvelope } from "./analytics-types";
 
 export type AnalyticsState = {
-  byRunId: Record<string, AnalyticsEventEnvelope[]>;
-  latestRunId: string | null;
+  timeline: AnalyticsEventEnvelope[];
 };
 
-export type AnalyticsRunResolution = {
-  runId: string | null;
+export type TelemetryTimelineResolution = {
   events: AnalyticsEventEnvelope[];
 };
 
 export type AnalyticsTriggerResolution = {
-  runId: string | null;
   events: AnalyticsEventEnvelope[];
   visible: boolean;
 };
 
 export const EMPTY_ANALYTICS_STATE: AnalyticsState = {
-  byRunId: {},
-  latestRunId: null,
+  timeline: [],
 };
 
 function normalizeString(value: unknown): string {
@@ -38,13 +34,6 @@ function getRunId(event: AnalyticsEventEnvelope): string {
   return normalizeString(event.context?.run_id);
 }
 
-function appendEvent(
-  items: AnalyticsEventEnvelope[] | undefined,
-  event: AnalyticsEventEnvelope,
-): AnalyticsEventEnvelope[] {
-  return [...(items ?? []), event];
-}
-
 export function appendAnalyticsEvent(
   prev: AnalyticsState,
   event: AnalyticsEventEnvelope,
@@ -55,20 +44,14 @@ export function appendAnalyticsEvent(
   }
 
   return {
-    byRunId: {
-      ...prev.byRunId,
-      [runId]: appendEvent(prev.byRunId[runId], event),
-    },
-    latestRunId: runId,
+    timeline: [...prev.timeline, event],
   };
 }
 
-export function resolveLatestAnalyticsRun(
+export function resolveTelemetryTimeline(
   state: AnalyticsState,
-): AnalyticsRunResolution {
-  const runId = state.latestRunId;
+): TelemetryTimelineResolution {
   return {
-    runId,
-    events: runId ? state.byRunId[runId] ?? [] : [],
+    events: state.timeline,
   };
 }

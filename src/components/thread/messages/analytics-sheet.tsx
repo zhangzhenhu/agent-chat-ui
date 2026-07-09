@@ -18,7 +18,6 @@ import { formatAnalyticsEventJson } from "./analytics-sheet-format";
 
 type AnalyticsSheetProps = {
   events: AnalyticsEventEnvelope[];
-  runId?: string | null;
 };
 
 function buildSummary(event: AnalyticsEventEnvelope): string {
@@ -37,6 +36,18 @@ function buildSummary(event: AnalyticsEventEnvelope): string {
   return [phaseLabel || eventName, componentName, status].filter(Boolean).join(" · ");
 }
 
+function buildMeta(event: AnalyticsEventEnvelope): string {
+  const runId =
+    typeof event.context?.run_id === "string" ? event.context.run_id : "";
+  const toolCallId =
+    typeof event.context?.tool_call_id === "string"
+      ? event.context.tool_call_id
+      : "";
+  return [runId ? `run ${runId}` : "", toolCallId ? `tool ${toolCallId}` : ""]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function AnalyticsEventRow({
   event,
   defaultOpen = false,
@@ -47,6 +58,7 @@ function AnalyticsEventRow({
   const [open, setOpen] = useState(defaultOpen);
   const [copied, setCopied] = useState(false);
   const summary = useMemo(() => buildSummary(event), [event]);
+  const meta = useMemo(() => buildMeta(event), [event]);
   const formattedEvent = useMemo(() => formatAnalyticsEventJson(event), [event]);
 
   const handleCopy = async (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -70,6 +82,11 @@ function AnalyticsEventRow({
           <div className="mt-1 text-xs text-slate-500">
             {event.emitted_at ?? ""}
           </div>
+          {meta ? (
+            <div className="mt-1 text-[11px] text-slate-400">
+              {meta}
+            </div>
+          ) : null}
         </div>
         {open ? (
           <ChevronDown className="mt-0.5 size-4 shrink-0 text-slate-400" />
@@ -121,7 +138,7 @@ function AnalyticsEventRow({
   );
 }
 
-export function AnalyticsSheet({ events, runId }: AnalyticsSheetProps) {
+export function AnalyticsSheet({ events }: AnalyticsSheetProps) {
   if (events.length === 0) {
     return null;
   }
@@ -140,9 +157,9 @@ export function AnalyticsSheet({ events, runId }: AnalyticsSheetProps) {
       >
         <DialogHeader className="sticky top-0 z-10 border-b border-slate-200 bg-white px-6 py-4">
           <DialogTitle>Telemetry Trace</DialogTitle>
-          {runId ? (
-            <div className="text-xs text-slate-500">Run: {runId}</div>
-          ) : null}
+          <div className="text-xs text-slate-500">
+            Unified timeline across root and child telemetry events
+          </div>
         </DialogHeader>
         <div className="flex shrink-0 flex-col gap-3 px-6 py-4">
           {events.map((event, index) => (

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 const {
   EMPTY_ANALYTICS_STATE,
   appendAnalyticsEvent,
-  resolveLatestAnalyticsRun,
+  resolveTelemetryTimeline,
 } = await import(new URL("../analytics-state.ts", import.meta.url).href);
 
 type AnalyticsEventEnvelope = {
@@ -19,8 +19,7 @@ type AnalyticsEventEnvelope = {
   };
 };
 
-type AnalyticsRunResolution = {
-  runId: string | null;
+type TelemetryTimelineResolution = {
   events: AnalyticsEventEnvelope[];
 };
 
@@ -35,7 +34,7 @@ function analyticsEvent(
   };
 }
 
-test("resolveLatestAnalyticsRun returns the latest run's analytics events", () => {
+test("resolveTelemetryTimeline preserves arrival order within one run", () => {
   let state = EMPTY_ANALYTICS_STATE;
 
   state = appendAnalyticsEvent(
@@ -53,35 +52,15 @@ test("resolveLatestAnalyticsRun returns the latest run's analytics events", () =
     }),
   );
 
-  const result: AnalyticsRunResolution = resolveLatestAnalyticsRun(state);
+  const result: TelemetryTimelineResolution = resolveTelemetryTimeline(state);
 
-  assert.equal(result.runId, "run-1");
   assert.deepEqual(result.events.map((event: AnalyticsEventEnvelope) => event.event_name), [
     "tool.card.emitted",
     "main.llm.decision",
   ]);
 });
 
-test("resolveLatestAnalyticsRun keeps newer run ownership independent of messages", () => {
-  let state = EMPTY_ANALYTICS_STATE;
-
-  state = appendAnalyticsEvent(
-    state,
-    analyticsEvent({
-      event_name: "turn.start",
-      context: { run_id: "run-9" },
-    }),
-  );
-
-  const result: AnalyticsRunResolution = resolveLatestAnalyticsRun(state);
-
-  assert.equal(result.runId, "run-9");
-  assert.deepEqual(result.events.map((event: AnalyticsEventEnvelope) => event.event_name), [
-    "turn.start",
-  ]);
-});
-
-test("resolveLatestAnalyticsRun switches to the newest run when a later run event arrives", () => {
+test("resolveTelemetryTimeline keeps a single merged timeline across runs", () => {
   let state = EMPTY_ANALYTICS_STATE;
 
   state = appendAnalyticsEvent(
@@ -94,15 +73,23 @@ test("resolveLatestAnalyticsRun switches to the newest run when a later run even
   state = appendAnalyticsEvent(
     state,
     analyticsEvent({
+      event_name: "subagent.tool.after",
+      context: { run_id: "run-10", tool_call_id: "call-1" },
+    }),
+  );
+  state = appendAnalyticsEvent(
+    state,
+    analyticsEvent({
       event_name: "turn.progress",
       context: { run_id: "run-11" },
     }),
   );
 
-  const result: AnalyticsRunResolution = resolveLatestAnalyticsRun(state);
+  const result: TelemetryTimelineResolution = resolveTelemetryTimeline(state);
 
-  assert.equal(result.runId, "run-11");
   assert.deepEqual(result.events.map((event: AnalyticsEventEnvelope) => event.event_name), [
+    "turn.start",
+    "subagent.tool.after",
     "turn.progress",
   ]);
 });
@@ -131,9 +118,8 @@ test("appendAnalyticsEvent accepts telemetry v1 events keyed by type telemetry",
     },
   );
 
-  const result: AnalyticsRunResolution = resolveLatestAnalyticsRun(state);
+  const result: TelemetryTimelineResolution = resolveTelemetryTimeline(state);
 
-  assert.equal(result.runId, "run-telemetry-1");
   assert.deepEqual(result.events.map((event: AnalyticsEventEnvelope) => event.event_name), [
     "tool.after",
   ]);

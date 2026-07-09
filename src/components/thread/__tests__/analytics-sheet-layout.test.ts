@@ -96,6 +96,21 @@ test("analytics rows do not shrink when the dialog viewport is crowded", () => {
   );
 });
 
+test("analytics sheet labels telemetry as a unified timeline and surfaces event metadata", () => {
+  assert.match(
+    analyticsSheetSource,
+    /Unified timeline across root and child telemetry events/,
+  );
+  assert.match(
+    analyticsSheetSource,
+    /run \${runId}/,
+  );
+  assert.match(
+    analyticsSheetSource,
+    /tool \${toolCallId}/,
+  );
+});
+
 test("syntax highlighter supports analytics-specific viewport overrides", () => {
   assert.match(syntaxHighlighterSource, /customStyle\?: CSSProperties;/);
   assert.match(syntaxHighlighterSource, /showLineNumbers\?: boolean;/);

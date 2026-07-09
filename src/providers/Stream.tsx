@@ -177,9 +177,6 @@ const StreamSession = ({
       }
 
       if (isAnalyticsStreamEvent(event)) {
-        if (!isRootStreamNamespace(options.namespace)) {
-          return;
-        }
         setAnalyticsState((prev) =>
           appendAnalyticsEvent(prev, event as AnalyticsEventEnvelope),
         );

@@ -16,12 +16,12 @@ test("composeStreamContextValue does not eagerly read stream getters", () => {
   });
 
   const contextValue = composeStreamContextValue(streamValue, {
-    analyticsState: { byRunId: {}, latestRunId: null },
+    analyticsState: { timeline: [] },
     thinkingState: { byRunId: {} },
   });
 
   assert.equal(getterReads, 0);
-  assert.deepEqual(contextValue.analyticsState, { byRunId: {}, latestRunId: null });
+  assert.deepEqual(contextValue.analyticsState, { timeline: [] });
   assert.deepEqual(contextValue.thinkingState, { byRunId: {} });
   assert.deepEqual(contextValue.messages, ["m1"]);
   assert.equal(getterReads, 1);

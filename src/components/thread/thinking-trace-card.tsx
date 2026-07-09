@@ -38,7 +38,6 @@ type ThinkingTraceCardProps = {
   runBucket?: ThinkingRunBucket | null;
   isLoading: boolean;
   analyticsEvents?: AnalyticsEventEnvelope[];
-  analyticsRunId?: string | null;
   runtimeTraceEntries?: InternalTraceEntry[];
   threadState?: unknown;
   threadId?: string | null;
@@ -157,7 +156,6 @@ export function ThinkingTraceCard({
   runBucket,
   isLoading,
   analyticsEvents = [],
-  analyticsRunId,
   runtimeTraceEntries = [],
   threadState,
   threadId,
@@ -238,7 +236,6 @@ export function ThinkingTraceCard({
           {analyticsEvents.length > 0 ? (
             <AnalyticsSheet
               events={analyticsEvents}
-              runId={analyticsRunId}
             />
           ) : null}
         </div>
