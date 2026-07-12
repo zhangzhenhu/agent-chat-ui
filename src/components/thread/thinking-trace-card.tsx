@@ -25,6 +25,7 @@ import {
   buildRenderedFacts,
   buildRenderedThinkingGroups,
   buildVisibleThinkingSteps,
+  formatThinkingEntryTime,
 } from "./thinking-trace-view-model";
 import { getThinkingStatusLabel } from "./thinking-trace-labels";
 import { AnalyticsSheet } from "./messages/analytics-sheet";
@@ -106,13 +107,20 @@ function ThinkingTraceStepItem({
             <div className="mt-3 flex flex-col gap-2">
               {facts.map((detail, index) => (
                 <div
-                  key={`${step.id}-${index}`}
+                  key={detail.entry_id ?? `${step.id}-${index}`}
                   className={cn(
                     "rounded-xl border px-3 py-2 text-xs leading-relaxed",
                     "border-slate-100 bg-slate-50 text-slate-600",
                   )}
                 >
-                  {detail.text ?? ""}
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="min-w-0">{detail.text ?? ""}</span>
+                    {formatThinkingEntryTime(detail.created_at) ? (
+                      <span className="shrink-0 text-[11px] text-slate-400">
+                        {formatThinkingEntryTime(detail.created_at)}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>
@@ -125,8 +133,15 @@ function ThinkingTraceStepItem({
                   key={`${step.id}-${group.entryId}`}
                   className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-3"
                 >
-                  <div className="text-[11px] font-semibold tracking-[0.08em] text-emerald-700 uppercase">
-                    {group.agentRole} · {group.agentName}
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0 text-[11px] font-semibold tracking-[0.08em] text-emerald-700 uppercase">
+                      {group.agentRole} · {group.agentName}
+                    </div>
+                    {formatThinkingEntryTime(group.createdAt) ? (
+                      <span className="shrink-0 text-[11px] text-emerald-700/70">
+                        {formatThinkingEntryTime(group.createdAt)}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="mt-2 flex flex-col gap-2">
                     {group.items.map((item, index) => (

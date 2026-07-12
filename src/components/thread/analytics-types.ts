@@ -71,6 +71,8 @@ export type ThinkingEventEnvelope = {
 export type ThinkingFactEntry = {
   kind: "fact";
   entry_id?: string;
+  // 历史 durable 卡可能没有该字段；新后端 entry 一律写入固定服务时区的创建时间。
+  created_at?: string;
   agent_name?: string;
   agent_role?: string;
   text?: string;
@@ -79,6 +81,8 @@ export type ThinkingFactEntry = {
 export type ThinkingReasoningEntry = {
   kind: "reasoning";
   entry_id: string;
+  // 与 fact 相同：这是 logical entry 首次产生的时间，不是某个 SSE 帧的 emitted_at。
+  created_at?: string;
   agent_name?: string;
   agent_role?: string;
   text?: string;

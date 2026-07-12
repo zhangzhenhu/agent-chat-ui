@@ -7,6 +7,7 @@ import type { ThinkingPhaseBucket } from "./thinking-state";
 
 export type RenderedThinkingGroup = {
   entryId: string;
+  createdAt?: string;
   agentName: string;
   agentRole: string;
   items: string[];
@@ -19,6 +20,8 @@ function renderDurableGroups(
     .filter((entry): entry is ThinkingReasoningEntry => entry.kind === "reasoning")
     .map((entry) => ({
       entryId: entry.entry_id,
+      // 历史 entry 缺失时间时保持属性缺失，避免伪造空的用户态数据。
+      ...(entry.created_at ? { createdAt: entry.created_at } : {}),
       agentName: entry.agent_name ?? "unknown-agent",
       agentRole: entry.agent_role ?? "unknown-role",
       // durable 新协议已经把一组 reasoning 片段收口成一段 text。
@@ -34,6 +37,8 @@ function renderTransientGroups(
 ): RenderedThinkingGroup[] {
   return Object.entries(phaseBucket?.groups ?? {}).map(([entryId, group]) => ({
     entryId,
+    // transient bucket 同样只在后端明确给出首时间后才向渲染层公开。
+    ...(group.createdAt ? { createdAt: group.createdAt } : {}),
     agentName: group.items[0]?.agentName ?? "unknown-agent",
     agentRole: group.items[0]?.agentRole ?? "unknown-role",
     items: group.items.map((item) => item.text),
@@ -72,6 +77,32 @@ export function buildRenderedThinkingGroups(
   // child 的 entry_added / reasoning_delta 是二/三阶段的主要进度内容）。
   // 不再做 `agentRole === "main"` 过滤。
   return [...merged.values()];
+}
+
+const CHINA_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: "Asia/Shanghai",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+export function formatThinkingEntryTime(createdAt: string | undefined): string {
+  if (!createdAt) {
+    return "";
+  }
+  const instant = new Date(createdAt);
+  if (Number.isNaN(instant.getTime())) {
+    return "";
+  }
+  // formatToParts 避免浏览器 locale 把日期顺序或分隔符改成用户本机习惯。
+  const parts = Object.fromEntries(
+    CHINA_TIME_FORMATTER.formatToParts(instant).map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
 // 合并 durable fact（step.entries 里 kind=fact）+ transient fact

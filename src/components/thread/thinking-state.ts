@@ -8,6 +8,8 @@ export type ThinkingDeltaItem = {
 
 export type ThinkingGroupBucket = {
   items: ThinkingDeltaItem[];
+  // raw chunk 可能早于 durable 卡到达，因此需要在 transient bucket 固定 entry 的首次时间。
+  createdAt?: string;
   flushed: boolean;
 };
 
@@ -57,6 +59,10 @@ function getText(event: ThinkingEventEnvelope): string {
   return normalizeString(event.payload?.text);
 }
 
+function getEntryCreatedAt(event: ThinkingEventEnvelope): string {
+  return normalizeString(event.payload?.entry_created_at);
+}
+
 // 新协议（frontend-06-thinking-sse-raw-guide.md 第 419/432 行）下，
 // thinking.reasoning_delta 用 `payload.entry_id` 与 durable 卡的
 // `entries[].entry_id` 对齐。后端必须显式传该字段；前端不再用
@@ -80,6 +86,7 @@ function parseEntryFact(payload: ThinkingEventEnvelope["payload"]): ThinkingFact
   return {
     kind: "fact",
     entry_id: normalizeString(e.entry_id) || undefined,
+    created_at: normalizeString(e.created_at) || undefined,
     agent_name: normalizeString(e.agent_name) || undefined,
     agent_role: normalizeString(e.agent_role) || undefined,
     text,
@@ -118,10 +125,10 @@ export function appendThinkingEvent(
 
   const phaseId = getPhaseId(event);
 
-  // reasoning_delta 是唯一需要 phase + entry 粒度的文本增量事件。
+  // reasoning chunk 是唯一需要 phase + entry 粒度的文本增量事件。
   // thinking.completed 是 run 级收口，只需要 runId（见下方分支）。
-  // 因此三要素早退只对 reasoning_delta 生效。
-  if (eventName === "thinking.reasoning_delta") {
+  // `thinking.chunk` 是当前协议；旧名称仅作为渐进部署时的读兼容。
+  if (eventName === "thinking.chunk" || eventName === "thinking.reasoning_delta") {
     const entryId = getEntryId(event);
     if (!phaseId || !entryId) {
       return prev;
@@ -139,6 +146,9 @@ export function appendThinkingEvent(
       ...(phaseBucket.groups[entryId]?.items ?? []),
       { text, agentName, agentRole },
     ];
+    const existingGroup = phaseBucket.groups[entryId];
+    // 同一 entry 的后续 chunk 只能复用首时间，不能让迟到事件改写用户看到的顺序。
+    const createdAt = existingGroup?.createdAt || getEntryCreatedAt(event) || undefined;
 
     return {
       byRunId: {
@@ -152,6 +162,7 @@ export function appendThinkingEvent(
                 ...phaseBucket.groups,
                 [entryId]: {
                   items: nextItems,
+                  createdAt,
                   flushed: false,
                 },
               },
@@ -218,6 +229,7 @@ export function appendThinkingEvent(
               existingEntryId,
               {
                 items: group.items,
+                createdAt: group.createdAt,
                 flushed: true,
               },
             ]),

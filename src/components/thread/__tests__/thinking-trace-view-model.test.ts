@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { buildRenderedFacts, buildRenderedThinkingGroups, buildVisibleThinkingSteps } = await import(
+const {
+  buildRenderedFacts,
+  buildRenderedThinkingGroups,
+  buildVisibleThinkingSteps,
+  formatThinkingEntryTime,
+} = await import(
   new URL("../thinking-trace-view-model.ts", import.meta.url).href,
 );
 
@@ -45,6 +50,49 @@ test("buildRenderedThinkingGroups appends transient items to an existing durable
       items: ["durable-1", "transient-1"],
     },
   ]);
+});
+
+test("buildRenderedThinkingGroups prefers durable entry time over transient time", () => {
+  const groups = buildRenderedThinkingGroups(
+    {
+      id: "intent",
+      title: "理解需求",
+      status: "active",
+      entries: [
+        {
+          kind: "reasoning",
+          entry_id: "main:family_main_agent",
+          agent_name: "family_main_agent",
+          agent_role: "main",
+          text: "durable",
+          created_at: "2026-07-12T14:32:18.456+08:00",
+        },
+      ],
+    },
+    {
+      facts: [],
+      groups: {
+        "main:family_main_agent": {
+          createdAt: "2026-07-12T14:32:10.000+08:00",
+          items: [
+            {
+              text: "transient",
+              agentName: "family_main_agent",
+              agentRole: "main",
+            },
+          ],
+          flushed: false,
+        },
+      },
+    },
+  );
+
+  assert.equal(groups[0].createdAt, "2026-07-12T14:32:18.456+08:00");
+});
+
+test("formatThinkingEntryTime uses the fixed China timezone and hides invalid values", () => {
+  assert.equal(formatThinkingEntryTime("2026-07-12T06:32:18.456Z"), "2026-07-12 14:32:18");
+  assert.equal(formatThinkingEntryTime("not-a-time"), "");
 });
 
 test("buildRenderedThinkingGroups keeps transient-only groups visible", () => {

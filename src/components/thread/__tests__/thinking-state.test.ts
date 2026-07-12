@@ -28,6 +28,43 @@ test("appendThinkingEvent stores reasoning deltas by run phase and entry_id", as
   assert.equal(next.latestRunId, "run-1");
 });
 
+test("appendThinkingEvent keeps the first timestamp for canonical thinking.chunk", async () => {
+  const { EMPTY_THINKING_STATE, appendThinkingEvent } = await import(
+    new URL("../thinking-state.ts", import.meta.url).href,
+  );
+
+  const first = appendThinkingEvent(EMPTY_THINKING_STATE, {
+    kind: "thinking",
+    event_name: "thinking.chunk",
+    context: { run_id: "run-1" },
+    subject: { agent_role: "main" },
+    payload: {
+      phase_id: "intent",
+      agent_name: "family_main_agent",
+      entry_id: "main:family_main_agent",
+      entry_created_at: "2026-07-12T14:32:18.456+08:00",
+      text: "先理解用户需求",
+    },
+  });
+  const second = appendThinkingEvent(first, {
+    kind: "thinking",
+    event_name: "thinking.chunk",
+    context: { run_id: "run-1" },
+    subject: { agent_role: "main" },
+    payload: {
+      phase_id: "intent",
+      agent_name: "family_main_agent",
+      entry_id: "main:family_main_agent",
+      entry_created_at: "2026-07-12T14:32:20.000+08:00",
+      text: "再决定是否委派专家",
+    },
+  });
+
+  const group = second.byRunId["run-1"].phases.intent.groups["main:family_main_agent"];
+  assert.equal(group.createdAt, "2026-07-12T14:32:18.456+08:00");
+  assert.equal(group.items.length, 2);
+});
+
 test("appendThinkingEvent ignores thinking.phase_started (durable card already carries phase + title)", async () => {
   const { EMPTY_THINKING_STATE, appendThinkingEvent } = await import(
     new URL("../thinking-state.ts", import.meta.url).href
@@ -117,6 +154,7 @@ test("appendThinkingEvent stores entry_added facts by phase and dedupes by entry
         agent_name: "food_need_specialist",
         agent_role: "need",
         text: "正在调用 food-need-intelligence 能力",
+        created_at: "2026-07-12T14:32:18.456+08:00",
       },
     },
   });
@@ -128,6 +166,7 @@ test("appendThinkingEvent stores entry_added facts by phase and dedupes by entry
       agent_name: "food_need_specialist",
       agent_role: "need",
       text: "正在调用 food-need-intelligence 能力",
+      created_at: "2026-07-12T14:32:18.456+08:00",
     },
   ]);
   assert.equal(next.latestRunId, "run-1");
