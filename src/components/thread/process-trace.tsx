@@ -14,6 +14,7 @@ export type InternalTraceEntry = {
   kind: "thinking" | "tool_call" | "tool_result";
   payload: unknown;
   isStreaming: boolean;
+  runId?: string;
 };
 
 type ProcessTraceCardProps = {

@@ -15,14 +15,27 @@ const threadStateSheetSource = await import("node:fs/promises").then((fs) =>
   ),
 );
 
-test("thinking trace header includes thread state entry beside runtime and telemetry", () => {
-  assert.match(thinkingTraceCardSource, /<ThreadStateSheet/);
+const threadIndexSource = await import("node:fs/promises").then((fs) =>
+  fs.readFile(
+    new URL("../index.tsx", import.meta.url),
+    "utf8",
+  ),
+);
+
+test("thinking trace header keeps runtime and telemetry but no longer includes thread state", () => {
+  assert.doesNotMatch(thinkingTraceCardSource, /<ThreadStateSheet/);
+  assert.match(thinkingTraceCardSource, /<RuntimeTraceSheet/);
+  assert.match(thinkingTraceCardSource, /<AnalyticsSheet/);
+});
+
+test("thread index renders a thread workbench beside the chat surface", () => {
+  assert.match(threadIndexSource, /<ThreadWorkbench/);
 });
 
 test("thread state dialog is wider and resizable", () => {
   assert.match(
     threadStateSheetSource,
-    /w-\[min\(96vw,1280px\)\].*max-w-none.*resize/s,
+    /w-\[min\(96vw,1280px\)\][\s\S]*max-w-none[\s\S]*resize/,
   );
 });
 

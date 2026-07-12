@@ -2,28 +2,27 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 const {
-  buildThreadDeleteErrorMessage,
-  summarizeThreadDeleteSettledResults,
+  getThreadDeletionDisabledReason,
 } = await import(new URL("../thread-delete.ts", import.meta.url).href);
 
-test("summarizeThreadDeleteSettledResults keeps success and failure ownership by thread id", () => {
-  const summary = summarizeThreadDeleteSettledResults(
-    ["thread-1", "thread-2", "thread-3"],
-    [
-      { status: "fulfilled", value: undefined },
-      { status: "rejected", reason: new Error("delete failed") },
-      { status: "fulfilled", value: undefined },
-    ],
+test("thread deletion is disabled for demandintel production hosts", () => {
+  assert.match(
+    getThreadDeletionDisabledReason("https://demandintel.ecej.com") ?? "",
+    /禁止/,
   );
-
-  assert.deepEqual(summary.successIds, ["thread-1", "thread-3"]);
-  assert.deepEqual(summary.failedIds, ["thread-2"]);
+  assert.match(
+    getThreadDeletionDisabledReason("https://sidemandintel.ecej.com") ?? "",
+    /禁止/,
+  );
 });
 
-test("buildThreadDeleteErrorMessage distinguishes total failure from partial failure", () => {
-  assert.equal(buildThreadDeleteErrorMessage(3, 3), "删除失败");
+test("thread deletion remains enabled for non-demandintel hosts", () => {
   assert.equal(
-    buildThreadDeleteErrorMessage(3, 1),
-    "部分会话删除成功，仍有 1 条删除失败",
+    getThreadDeletionDisabledReason("http://127.0.0.1:8000"),
+    null,
+  );
+  assert.equal(
+    getThreadDeletionDisabledReason("https://example.com/api"),
+    null,
   );
 });

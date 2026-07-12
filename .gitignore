@@ -28,3 +28,6 @@ dist-ssr
 .env
 .next/
 next-env.d.ts
+
+# TS incremental build info
+tsconfig.tsbuildinfo

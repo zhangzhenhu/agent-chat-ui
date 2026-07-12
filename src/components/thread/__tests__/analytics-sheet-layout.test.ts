@@ -22,14 +22,14 @@ const syntaxHighlighterSource = await import(
 test("analytics sheet dialog is wider and resizable", () => {
   assert.match(
     analyticsSheetSource,
-    /!flex h-\[85vh\] w-\[min\(96vw,1280px\)\].*max-w-none.*resize.*overflow-y-scroll/s,
+    /!flex h-\[85vh\] w-\[min\(96vw,1280px\)\][\s\S]*max-w-none[\s\S]*resize[\s\S]*overflow-y-scroll/,
   );
 });
 
 test("analytics sheet json viewport owns scrolling and shows line numbers", () => {
   assert.match(
     analyticsSheetSource,
-    /max-h-\[60vh\].*overflow-x-auto.*overflow-y-scroll.*overscroll-contain/s,
+    /max-h-\[60vh\][\s\S]*overflow-x-auto[\s\S]*overflow-y-scroll[\s\S]*overscroll-contain/,
   );
   assert.match(
     analyticsSheetSource,

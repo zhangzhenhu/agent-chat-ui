@@ -135,15 +135,17 @@ export function RuntimeTraceSheet({
   entries: InternalTraceEntry[];
 }) {
   const summary = useMemo(() => buildRuntimeTraceSummary(entries), [entries]);
-
-  if (entries.length === 0) {
-    return null;
-  }
+  const disabled = entries.length === 0;
 
   return (
     <Dialog>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-8 px-2 text-slate-500">
+      <DialogTrigger asChild disabled={disabled}>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={disabled}
+          className="h-8 px-2 text-slate-500 disabled:pointer-events-none disabled:opacity-40"
+        >
           <Activity className="size-4" />
           <span className="ml-1">Runtime Trace</span>
         </Button>
@@ -155,7 +157,7 @@ export function RuntimeTraceSheet({
         <DialogHeader className="sticky top-0 z-10 border-b border-slate-200 bg-white px-6 py-4">
           <DialogTitle>Runtime Trace</DialogTitle>
           <div className="text-xs text-slate-500">
-            {summary || "Captured intermediate runtime details"}
+            {summary || "No runtime trace captured for the current run"}
           </div>
         </DialogHeader>
         <div className="flex shrink-0 flex-col gap-3 px-6 py-4">

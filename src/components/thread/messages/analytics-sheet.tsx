@@ -139,14 +139,17 @@ function AnalyticsEventRow({
 }
 
 export function AnalyticsSheet({ events }: AnalyticsSheetProps) {
-  if (events.length === 0) {
-    return null;
-  }
+  const disabled = events.length === 0;
 
   return (
     <Dialog>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-8 px-2 text-slate-500">
+      <DialogTrigger asChild disabled={disabled}>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={disabled}
+          className="h-8 px-2 text-slate-500 disabled:pointer-events-none disabled:opacity-40"
+        >
           <BarChart3 className="size-4" />
           <span className="ml-1">Telemetry</span>
         </Button>
@@ -158,7 +161,9 @@ export function AnalyticsSheet({ events }: AnalyticsSheetProps) {
         <DialogHeader className="sticky top-0 z-10 border-b border-slate-200 bg-white px-6 py-4">
           <DialogTitle>Telemetry Trace</DialogTitle>
           <div className="text-xs text-slate-500">
-            Unified timeline across root and child telemetry events
+            {disabled
+              ? "No telemetry captured for the current run"
+              : "Unified timeline across root and child telemetry events"}
           </div>
         </DialogHeader>
         <div className="flex shrink-0 flex-col gap-3 px-6 py-4">

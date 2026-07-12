@@ -14,6 +14,7 @@ import {
 import { createClient } from "./client";
 import {
   buildThreadDeleteErrorMessage,
+  getThreadDeletionDisabledReason,
   summarizeThreadDeleteSettledResults,
 } from "./thread-delete";
 
@@ -29,6 +30,7 @@ interface ThreadContextType {
   deleteThread: (threadId: string) => Promise<void>;
   /** Delete multiple threads by id. */
   deleteThreads: (threadIds: string[]) => Promise<void>;
+  threadDeletionDisabledReason: string | null;
 }
 
 const ThreadContext = createContext<ThreadContextType | undefined>(undefined);
@@ -58,6 +60,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
   });
   const [threads, setThreads] = useState<Thread[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(false);
+  const threadDeletionDisabledReason = getThreadDeletionDisabledReason(apiUrl);
 
   const getThreads = useCallback(async (): Promise<Thread[]> => {
     const resolvedAssistantId = assistantId || envAssistantId;
@@ -122,6 +125,9 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     async (threadId: string): Promise<void> => {
       const resolvedAssistantId = assistantId || envAssistantId;
       if (!apiUrl || !resolvedAssistantId) return;
+      if (threadDeletionDisabledReason) {
+        throw new Error(threadDeletionDisabledReason);
+      }
       const client = createClient(
         apiUrl,
         getApiKey() ?? undefined,
@@ -137,7 +143,15 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
         throw err;
       }
     },
-    [apiUrl, assistantId, authScheme, envAssistantId, threads, setThreads],
+    [
+      apiUrl,
+      assistantId,
+      authScheme,
+      envAssistantId,
+      threadDeletionDisabledReason,
+      threads,
+      setThreads,
+    ],
   );
 
   const deleteThreads = useCallback(
@@ -147,6 +161,9 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
 
       const resolvedAssistantId = assistantId || envAssistantId;
       if (!apiUrl || !resolvedAssistantId) return;
+      if (threadDeletionDisabledReason) {
+        throw new Error(threadDeletionDisabledReason);
+      }
 
       const client = createClient(
         apiUrl,
@@ -185,6 +202,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
       authScheme,
       envAssistantId,
       getThreads,
+      threadDeletionDisabledReason,
       threads,
       setThreads,
     ],
@@ -199,6 +217,7 @@ export function ThreadProvider({ children }: { children: ReactNode }) {
     renameThread,
     deleteThread,
     deleteThreads,
+    threadDeletionDisabledReason,
   };
 
   return (

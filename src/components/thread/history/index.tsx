@@ -52,7 +52,13 @@ function ThreadList({
   onThreadClick?: (threadId: string) => void;
 }) {
   const [threadId, setThreadId] = useQueryState("threadId");
-  const { renameThread, deleteThread, deleteThreads } = useThreads();
+  const {
+    renameThread,
+    deleteThread,
+    deleteThreads,
+    threadDeletionDisabledReason,
+  } = useThreads();
+  const threadDeletionDisabled = Boolean(threadDeletionDisabledReason);
 
   // Inline-edit state for the Rename action. `editingId` is the thread being
   // edited; `editingValue` is the current input text. Null when not editing.
@@ -149,6 +155,15 @@ function ThreadList({
 
   // Open the custom confirm dialog for a thread (does not delete yet).
   const handleDelete = (t: Thread) => {
+    if (threadDeletionDisabled) {
+      toast.error("已禁止删除", {
+        description: threadDeletionDisabledReason ?? undefined,
+        richColors: true,
+        closeButton: true,
+        duration: 5000,
+      });
+      return;
+    }
     if (editingId === t.thread_id) cancelRename();
     setConfirmDelete(t);
   };
@@ -240,7 +255,8 @@ function ThreadList({
                 variant="destructive"
                 size="sm"
                 className="h-8 px-2"
-                disabled={selectedIds.length === 0}
+                disabled={selectedIds.length === 0 || threadDeletionDisabled}
+                title={threadDeletionDisabledReason ?? undefined}
                 onClick={() => setConfirmBulkDelete(true)}
               >
                 <Trash2 className="size-4" />
@@ -260,6 +276,8 @@ function ThreadList({
               variant="ghost"
               size="sm"
               className="h-8 px-2 text-slate-600"
+              disabled={threadDeletionDisabled}
+              title={threadDeletionDisabledReason ?? undefined}
               onClick={() => {
                 cancelRename();
                 setSelectionMode(true);
@@ -271,6 +289,11 @@ function ThreadList({
           )}
         </div>
       </div>
+      {threadDeletionDisabled ? (
+        <div className="px-2 pb-2 text-xs text-amber-700">
+          {threadDeletionDisabledReason}
+        </div>
+      ) : null}
 
       <div className="flex h-full w-full flex-col items-start justify-start gap-2 overflow-y-scroll pr-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:bg-transparent">
         {threads.map((t) => {
@@ -387,6 +410,7 @@ function ThreadList({
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         variant="destructive"
+                        disabled={threadDeletionDisabled}
                         // Defer opening the confirm dialog to the next tick so the
                         // DropdownMenu can finish closing first. Opening a Dialog
                         // synchronously from a menu item's select races the menu's

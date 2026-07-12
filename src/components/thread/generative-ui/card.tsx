@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { MarkdownText } from "../markdown-text";
 
 import {
   GenerativeComponentShell,
@@ -25,7 +26,7 @@ function isCandidateList(value: unknown): value is { summary?: string; candidate
 
 function renderStructuredData(data: unknown) {
   if (typeof data === "string") {
-    return <div className="whitespace-pre-wrap text-sm leading-6">{data}</div>;
+    return <MarkdownText>{data}</MarkdownText>;
   }
 
   if (isCandidateList(data)) {

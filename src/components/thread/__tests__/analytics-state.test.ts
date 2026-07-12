@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 const {
   EMPTY_ANALYTICS_STATE,
   appendAnalyticsEvent,
+  resolveTelemetryEventsForRun,
   resolveTelemetryTimeline,
 } = await import(new URL("../analytics-state.ts", import.meta.url).href);
 
@@ -92,6 +93,39 @@ test("resolveTelemetryTimeline keeps a single merged timeline across runs", () =
     "subagent.tool.after",
     "turn.progress",
   ]);
+});
+
+test("resolveTelemetryEventsForRun only returns events for the requested run", () => {
+  let state = EMPTY_ANALYTICS_STATE;
+
+  state = appendAnalyticsEvent(
+    state,
+    analyticsEvent({
+      event_name: "turn.start",
+      context: { run_id: "run-10" },
+    }),
+  );
+  state = appendAnalyticsEvent(
+    state,
+    analyticsEvent({
+      event_name: "turn.progress",
+      context: { run_id: "run-11" },
+    }),
+  );
+  state = appendAnalyticsEvent(
+    state,
+    analyticsEvent({
+      event_name: "turn.end",
+      context: { run_id: "run-10" },
+    }),
+  );
+
+  const result = resolveTelemetryEventsForRun(state, "run-10");
+
+  assert.deepEqual(
+    result.map((event: AnalyticsEventEnvelope) => event.event_name),
+    ["turn.start", "turn.end"],
+  );
 });
 
 test("appendAnalyticsEvent ignores envelopes without run_id", () => {

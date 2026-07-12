@@ -11,7 +11,7 @@ const runtimeTraceSheetSource = await import("node:fs/promises").then((fs) =>
 test("runtime trace dialog is wider and resizable", () => {
   assert.match(
     runtimeTraceSheetSource,
-    /!flex h-\[85vh\] w-\[min\(96vw,1280px\)\].*max-w-none.*resize.*overflow-y-scroll/s,
+    /!flex h-\[85vh\] w-\[min\(96vw,1280px\)\][\s\S]*max-w-none[\s\S]*resize[\s\S]*overflow-y-scroll/,
   );
 });
 
@@ -44,7 +44,7 @@ test("runtime trace rows do not shrink when the dialog viewport is crowded", () 
 test("runtime trace row body constrains tall payloads with its own scroller", () => {
   assert.match(
     runtimeTraceSheetSource,
-    /max-h-\[60vh\].*overflow-x-auto.*overflow-y-scroll.*overscroll-contain/s,
+    /max-h-\[60vh\][\s\S]*overflow-x-auto[\s\S]*overflow-y-scroll[\s\S]*overscroll-contain/,
   );
   assert.match(
     runtimeTraceSheetSource,

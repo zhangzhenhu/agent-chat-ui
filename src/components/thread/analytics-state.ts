@@ -34,6 +34,17 @@ function getRunId(event: AnalyticsEventEnvelope): string {
   return normalizeString(event.context?.run_id);
 }
 
+export function resolveTelemetryEventsForRun(
+  state: AnalyticsState,
+  runId: string,
+): AnalyticsEventEnvelope[] {
+  if (!runId) {
+    return [];
+  }
+
+  return state.timeline.filter((event) => getRunId(event) === runId);
+}
+
 export function appendAnalyticsEvent(
   prev: AnalyticsState,
   event: AnalyticsEventEnvelope,

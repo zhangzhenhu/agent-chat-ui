@@ -56,19 +56,29 @@ import {
   parseStoredParamsDraft,
   type StoredParamsDraft,
 } from "./params-storage";
+import { buildSubmitConfig } from "./submit-config";
 import {
   PendingInterruptCard,
 } from "./process-trace";
 import {
   getInternalTraceEntries,
+  getInternalTraceEntriesForRun,
   buildTranscriptBlocks,
+  mapHistoricalThinkingTraceCards,
+  mergeThinkingTraceCards,
   resolveThinkingTrace,
+  resolveThinkingTraceCards,
   splitTranscriptBlocksForThinking,
 } from "./process-trace-helpers";
 import { hasMessageBoundUi } from "./message-bound-ui";
 import { getContentString } from "./utils";
 import { ThinkingTraceCard } from "./thinking-trace-card";
-import { resolveTelemetryTimeline } from "./analytics-state";
+import { ThreadWorkbench } from "./thread-workbench";
+import { resolveTelemetryEventsForRun } from "./analytics-state";
+import {
+  readThinkingTraceCacheFromSessionStorage,
+  writeThinkingTraceCacheToSessionStorage,
+} from "./thinking-trace-cache";
 import { resolveThinkingTraceDisplay } from "./thinking-trace-display";
 
 function StickyToBottomContent(props: {
@@ -176,7 +186,7 @@ export function Thread() {
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
 
   const stream = useStreamContext();
-  const { setShowConfig } = useConfigContext();
+  const { setShowConfig, apiUrl, apiKey, authScheme } = useConfigContext();
   const stateValues = stream.values as StateType | undefined;
   const isLoading = stream.isLoading;
 
@@ -286,6 +296,50 @@ export function Thread() {
     () => resolveThinkingTrace(protectedUi),
     [protectedUi],
   );
+  const durableThinkingCardsInView = useMemo(
+    () => resolveThinkingTraceCards(protectedUi),
+    [protectedUi],
+  );
+  const [thinkingTraceCacheByThreadId, setThinkingTraceCacheByThreadId] = useState<
+    Record<string, ReturnType<typeof resolveThinkingTraceCards>>
+  >({});
+  const [thinkingTraceCacheReady, setThinkingTraceCacheReady] = useState(false);
+  useEffect(() => {
+    const stored = readThinkingTraceCacheFromSessionStorage();
+    setThinkingTraceCacheByThreadId((prev) => {
+      const merged = { ...stored };
+      for (const [cachedThreadId, cards] of Object.entries(prev)) {
+        merged[cachedThreadId] = mergeThinkingTraceCards(
+          stored[cachedThreadId] ?? [],
+          cards,
+        );
+      }
+      return merged;
+    });
+    setThinkingTraceCacheReady(true);
+  }, []);
+  useEffect(() => {
+    if (!threadId || durableThinkingCardsInView.length === 0) {
+      return;
+    }
+    setThinkingTraceCacheByThreadId((prev) => {
+      const current = prev[threadId] ?? [];
+      const next = mergeThinkingTraceCards(current, durableThinkingCardsInView);
+      if (JSON.stringify(current) === JSON.stringify(next)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [threadId]: next,
+      };
+    });
+  }, [threadId, durableThinkingCardsInView]);
+  useEffect(() => {
+    if (!thinkingTraceCacheReady) {
+      return;
+    }
+    writeThinkingTraceCacheToSessionStorage(thinkingTraceCacheByThreadId);
+  }, [thinkingTraceCacheByThreadId, thinkingTraceCacheReady]);
   const thinkingDisplay = useMemo(
     () =>
       resolveThinkingTraceDisplay({
@@ -294,10 +348,74 @@ export function Thread() {
       }),
     [thinkingTrace, stream.thinkingState],
   );
-  const telemetryTimeline = useMemo(
-    () => resolveTelemetryTimeline(stream.analyticsState),
-    [stream.analyticsState],
-  );
+  const durableThinkingCards = threadId
+    ? (thinkingTraceCacheByThreadId[threadId] ?? durableThinkingCardsInView)
+    : durableThinkingCardsInView;
+  const historicalThinkingTraceMap = useMemo(() => {
+    const humanMessageIds = transcriptBlocks
+      .filter((block) => block.kind === "human")
+      .map((block) => block.message.id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    const hasCurrentThinkingCard = Boolean(thinkingDisplay.snapshot);
+    const historicalCards = hasCurrentThinkingCard
+      ? durableThinkingCards.slice(0, -1)
+      : durableThinkingCards;
+    const historicalHumanMessageIds = hasCurrentThinkingCard
+      ? humanMessageIds.slice(0, -1)
+      : humanMessageIds;
+
+    return mapHistoricalThinkingTraceCards({
+      cards: historicalCards,
+      humanMessageIds: historicalHumanMessageIds,
+    });
+  }, [durableThinkingCards, transcriptBlocks, thinkingDisplay.snapshot]);
+  const telemetryEventsByRunId = useMemo(() => {
+    const eventsByRunId: Record<string, ReturnType<typeof resolveTelemetryEventsForRun>> = {};
+    const runIds = new Set<string>();
+
+    for (const card of durableThinkingCards) {
+      if (card.runId) {
+        runIds.add(card.runId);
+      }
+    }
+    if (thinkingDisplay.runId) {
+      runIds.add(thinkingDisplay.runId);
+    }
+
+    for (const runId of runIds) {
+      eventsByRunId[runId] = resolveTelemetryEventsForRun(
+        stream.analyticsState,
+        runId,
+      );
+    }
+
+    return eventsByRunId;
+  }, [durableThinkingCards, thinkingDisplay.runId, stream.analyticsState]);
+  const runtimeTraceEntriesByRunId = useMemo(() => {
+    const entriesByRunId: Record<
+      string,
+      ReturnType<typeof getInternalTraceEntriesForRun>
+    > = {};
+    const runIds = new Set<string>();
+
+    for (const card of durableThinkingCards) {
+      if (card.runId) {
+        runIds.add(card.runId);
+      }
+    }
+    if (thinkingDisplay.runId) {
+      runIds.add(thinkingDisplay.runId);
+    }
+
+    for (const runId of runIds) {
+      entriesByRunId[runId] = getInternalTraceEntriesForRun(
+        internalTraceEntries,
+        runId,
+      );
+    }
+
+    return entriesByRunId;
+  }, [durableThinkingCards, thinkingDisplay.runId, internalTraceEntries]);
 
   /**
    * Custom LangGraph run parameters set by the user in the ParamsPanel.
@@ -494,9 +612,7 @@ export function Thread() {
         ],
       }),
     };
-    if (customParams.configurable) {
-      submitOptions.config = { configurable: customParams.configurable };
-    }
+    submitOptions.config = buildSubmitConfig(customParams.configurable);
 
     stream.submit(
       submitPayload as { messages: Message[]; context?: Record<string, unknown> },
@@ -519,9 +635,7 @@ export function Thread() {
       streamSubgraphs: true,
       streamResumable: true,
     };
-    if (customParams.configurable) {
-      options.config = { configurable: customParams.configurable };
-    }
+    options.config = buildSubmitConfig(customParams.configurable);
     stream.submit(undefined, options as Parameters<typeof stream.submit>[1]);
   };
 
@@ -579,6 +693,15 @@ export function Thread() {
               : { duration: 0 }
           }
         >
+          <ThreadWorkbench
+            apiUrl={apiUrl}
+            apiKey={apiKey}
+            authScheme={authScheme}
+            threadId={threadId}
+            threadState={stateValues ?? null}
+            chatStarted={chatStarted}
+            isLargeScreen={isLargeScreen}
+          />
           {!chatStarted && (
             <div className="absolute top-0 left-0 z-10 flex w-full items-center justify-between gap-3 p-2 pl-4">
               <div className="flex items-center gap-2">
@@ -697,11 +820,30 @@ export function Thread() {
                   {transcriptLayout.beforeThinking.map((block, index) => {
                     if (block.kind === "human") {
                       return (
-                        <HumanMessage
+                        <div
                           key={block.message.id || `human-${index}`}
-                          message={block.message}
-                          isLoading={isLoading}
-                        />
+                          className="flex flex-col gap-4"
+                        >
+                          <HumanMessage
+                            message={block.message}
+                            isLoading={isLoading}
+                          />
+                          {(historicalThinkingTraceMap[block.message.id ?? ""] ?? []).map(
+                            (thinkingCard) => (
+                              <ThinkingTraceCard
+                                key={thinkingCard.uiId}
+                                snapshot={thinkingCard.snapshot}
+                                isLoading={false}
+                                analyticsEvents={
+                                  telemetryEventsByRunId[thinkingCard.runId] ?? []
+                                }
+                                runtimeTraceEntries={
+                                  runtimeTraceEntriesByRunId[thinkingCard.runId] ?? []
+                                }
+                              />
+                            ),
+                          )}
+                        </div>
                       );
                     }
 
@@ -720,10 +862,16 @@ export function Thread() {
                       snapshot={thinkingDisplay.snapshot}
                       runBucket={thinkingDisplay.runBucket}
                       isLoading={isLoading}
-                      analyticsEvents={telemetryTimeline.events}
-                      runtimeTraceEntries={internalTraceEntries}
-                      threadState={stateValues ?? null}
-                      threadId={threadId}
+                      analyticsEvents={
+                        thinkingDisplay.runId
+                          ? telemetryEventsByRunId[thinkingDisplay.runId] ?? []
+                          : []
+                      }
+                      runtimeTraceEntries={
+                        thinkingDisplay.runId
+                          ? runtimeTraceEntriesByRunId[thinkingDisplay.runId] ?? []
+                          : []
+                      }
                     />
                   ) : null}
                   {transcriptLayout.afterThinking.map((block, index) => {
