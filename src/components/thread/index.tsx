@@ -51,10 +51,22 @@ import {
 import { AssistantSelector } from "./assistant-selector";
 import { ParamsPanel, type CustomParams } from "./params-panel";
 import {
-  getStoredParamsDraftText,
-  PARAMS_STORAGE_KEY,
+  appendAndSelectParamsProfile,
+  buildStoredParamsDraft,
+  createInitialParamsProfileStore,
+  createParamsProfile,
+  deleteActiveParamsProfile,
+  getActiveParamsProfile,
+  LEGACY_PARAMS_STORAGE_KEY,
+  migrateStoredParamsDraft,
+  PARAMS_PROFILES_STORAGE_KEY,
+  parseParamsProfileStore,
   parseStoredParamsDraft,
-  type StoredParamsDraft,
+  renameActiveParamsProfile,
+  selectParamsProfile,
+  serializeParamsProfileStore,
+  updateActiveParamsProfile as updateStoredParamsProfile,
+  type ParamsProfileStore,
 } from "./params-storage";
 import { buildSubmitConfig } from "./submit-config";
 import {
@@ -425,19 +437,17 @@ export function Thread() {
    * These are kept in component state (not URL params) because they can
    * be large JSON objects. They persist across messages within a session.
    */
-  const [customParams, setCustomParams] = useState<CustomParams>({
-    configurable: null,
-    input: null,
-  });
-  const [paramsDraft, setParamsDraft] = useState<StoredParamsDraft | null>(null);
+  const [paramsProfileStore, setParamsProfileStore] =
+    useState<ParamsProfileStore | null>(null);
+  const [paramsLoaded, setParamsLoaded] = useState(false);
 
   /**
-   * Load cached parameters from localStorage first, then fall back to
-   * /default-params.json only when the browser has no saved draft.
+   * Load a named profile store from localStorage, then migrate the legacy
+   * single draft before falling back to /default-params.json.
    *
    * 这样可以同时满足：
-   * 1. 刷新页面后保留用户上次输入；
-   * 2. 新建对话后继续沿用同一组参数；
+   * 1. 刷新页面后恢复上次选择的配置；
+   * 2. 各配置的原始 JSON 都独立保留；
    * 3. 首次打开页面时，仍然支持项目级默认参数文件。
    *
    * 注意这里缓存的是“原始 JSON 文本”，而不仅是 parse 后的对象：
@@ -448,70 +458,156 @@ export function Thread() {
    * defaults for configurable and input fields. Saves users from having
    * to re-type the same JSON every session.
    *
-   * After loading, paramsKey is incremented so ParamsPanel remounts
-   * with the loaded values as its initial state.
    */
   const paramsLoadedRef = useRef(false);
-  const [paramsKey, setParamsKey] = useState(0);
   useEffect(() => {
     if (paramsLoadedRef.current) return;
-    const cachedDraft =
+    const cachedProfileStore =
       typeof window !== "undefined"
-        ? parseStoredParamsDraft(window.localStorage.getItem(PARAMS_STORAGE_KEY))
+        ? parseParamsProfileStore(
+            window.localStorage.getItem(PARAMS_PROFILES_STORAGE_KEY),
+          )
         : null;
-    if (cachedDraft) {
-      setParamsDraft(cachedDraft);
-      setCustomParams({
-        configurable: cachedDraft.configurable,
-        input: cachedDraft.input,
-      });
-      setParamsKey((k) => k + 1); // remount ParamsPanel with cached values
+    if (cachedProfileStore) {
+      setParamsProfileStore(cachedProfileStore);
+      setParamsLoaded(true);
       paramsLoadedRef.current = true;
       return;
     }
+
+    const legacyDraft =
+      typeof window !== "undefined"
+        ? parseStoredParamsDraft(
+            window.localStorage.getItem(LEGACY_PARAMS_STORAGE_KEY),
+          )
+        : null;
+    if (legacyDraft) {
+      setParamsProfileStore(
+        migrateStoredParamsDraft({
+          legacyDraft,
+          id: crypto.randomUUID(),
+          updatedAt: new Date().toISOString(),
+        }),
+      );
+      setParamsLoaded(true);
+      paramsLoadedRef.current = true;
+      return;
+    }
+
     fetch("/default-params.json")
       .then((res) => {
         if (!res.ok) throw new Error("Not found");
         return res.json();
       })
       .then((data) => {
-        const configurable = data?.configurable && typeof data.configurable === "object" && !Array.isArray(data.configurable)
-          ? data.configurable
-          : null;
-        const input = data?.input && typeof data.input === "object" && !Array.isArray(data.input)
-          ? data.input
-          : null;
-        if (configurable || input) {
-          const draft = {
-            configurableText: configurable ? JSON.stringify(configurable, null, 2) : "",
-            inputText: input ? JSON.stringify(input, null, 2) : "",
-            configurable,
-            input,
-          };
-          setParamsDraft(draft);
-          setCustomParams({ configurable, input });
-          setParamsKey((k) => k + 1); // remount ParamsPanel with loaded values
-        }
+        const configurable =
+          data?.configurable &&
+          typeof data.configurable === "object" &&
+          !Array.isArray(data.configurable)
+            ? data.configurable
+            : null;
+        const input =
+          data?.input &&
+          typeof data.input === "object" &&
+          !Array.isArray(data.input)
+            ? data.input
+            : null;
+        setParamsProfileStore(
+          createInitialParamsProfileStore({
+            defaults: { configurable, input },
+            id: crypto.randomUUID(),
+            updatedAt: new Date().toISOString(),
+          }),
+        );
       })
       .catch(() => {
-        // File doesn't exist or is invalid — use empty defaults
+        setParamsProfileStore(
+          createInitialParamsProfileStore({
+            defaults: null,
+            id: crypto.randomUUID(),
+            updatedAt: new Date().toISOString(),
+          }),
+        );
+      })
+      .finally(() => {
+        setParamsLoaded(true);
       });
     paramsLoadedRef.current = true;
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !paramsDraft) {
+    if (typeof window === "undefined" || !paramsProfileStore) {
       return;
     }
 
     window.localStorage.setItem(
-      PARAMS_STORAGE_KEY,
-      getStoredParamsDraftText({
-        configurableText: paramsDraft.configurableText,
-        inputText: paramsDraft.inputText,
-      }),
+      PARAMS_PROFILES_STORAGE_KEY,
+      serializeParamsProfileStore(paramsProfileStore),
     );
-  }, [paramsDraft]);
+    window.localStorage.removeItem(LEGACY_PARAMS_STORAGE_KEY);
+  }, [paramsProfileStore]);
+
+  const activeParamsProfile = paramsProfileStore
+    ? getActiveParamsProfile(paramsProfileStore)
+    : null;
+  const customParams: CustomParams = activeParamsProfile
+    ? buildStoredParamsDraft(activeParamsProfile)
+    : { configurable: null, input: null };
+
+  const updateActiveParamsProfile = (texts: {
+    configurableText: string;
+    inputText: string;
+  }) => {
+    setParamsProfileStore((current) =>
+      current
+        ? updateStoredParamsProfile(current, texts, new Date().toISOString())
+        : current,
+    );
+  };
+
+  const createParamsProfileFromPanel = (args: {
+    name: string;
+    mode: "copy" | "empty";
+  }) => {
+    setParamsProfileStore((current) => {
+      if (!current) return current;
+      const source =
+        args.mode === "copy" ? getActiveParamsProfile(current) : null;
+      return appendAndSelectParamsProfile(
+        current,
+        createParamsProfile({
+          id: crypto.randomUUID(),
+          name: args.name,
+          configurableText: source?.configurableText,
+          inputText: source?.inputText,
+          updatedAt: new Date().toISOString(),
+        }),
+      );
+    });
+  };
+
+  const renameActiveParamsProfileFromPanel = (name: string) => {
+    setParamsProfileStore((current) =>
+      current
+        ? renameActiveParamsProfile(current, name, new Date().toISOString())
+        : current,
+    );
+  };
+
+  const deleteActiveParamsProfileFromPanel = () => {
+    setParamsProfileStore((current) => {
+      if (!current) return current;
+      const remaining = deleteActiveParamsProfile(current);
+      return (
+        remaining ??
+        createInitialParamsProfileStore({
+          defaults: null,
+          id: crypto.randomUUID(),
+          updatedAt: new Date().toISOString(),
+        })
+      );
+    });
+  };
 
   const lastError = useRef<string | undefined>(undefined);
 
@@ -916,13 +1012,23 @@ export function Thread() {
 
                   <ScrollToBottom className="animate-in fade-in-0 zoom-in-95 absolute bottom-full left-1/2 mb-4 -translate-x-1/2" />
 
-                  <ParamsPanel
-                    key={paramsKey}
-                    params={customParams}
-                    initialDraft={paramsDraft}
-                    onChange={setCustomParams}
-                    onDraftChange={setParamsDraft}
-                  />
+                  {paramsLoaded && activeParamsProfile && paramsProfileStore ? (
+                    <ParamsPanel
+                      profile={activeParamsProfile}
+                      profiles={paramsProfileStore.profiles}
+                      onSelectProfile={(profileId) =>
+                        setParamsProfileStore((current) =>
+                          current
+                            ? selectParamsProfile(current, profileId)
+                            : current,
+                        )
+                      }
+                      onUpdateProfile={updateActiveParamsProfile}
+                      onCreateProfile={createParamsProfileFromPanel}
+                      onRenameProfile={renameActiveParamsProfileFromPanel}
+                      onDeleteProfile={deleteActiveParamsProfileFromPanel}
+                    />
+                  ) : null}
 
                   <div
                     ref={dropRef}

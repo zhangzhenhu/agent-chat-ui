@@ -66,7 +66,9 @@ export function parseStoredParamsDraft(
     }
 
     const configurableText =
-      typeof parsed.configurableText === "string" ? parsed.configurableText : "";
+      typeof parsed.configurableText === "string"
+        ? parsed.configurableText
+        : "";
     const inputText =
       typeof parsed.inputText === "string" ? parsed.inputText : "";
 
@@ -126,7 +128,11 @@ export function parseParamsProfileStore(
     }
 
     const profiles = parsed.profiles;
-    if (!profiles.some((profile) => profile.id === parsed.activeProfileId)) {
+    const profileIds = new Set(profiles.map((profile) => profile.id));
+    if (
+      profileIds.size !== profiles.length ||
+      !profileIds.has(parsed.activeProfileId)
+    ) {
       return null;
     }
 
@@ -140,9 +146,7 @@ export function parseParamsProfileStore(
   }
 }
 
-export function serializeParamsProfileStore(
-  store: ParamsProfileStore,
-): string {
+export function serializeParamsProfileStore(store: ParamsProfileStore): string {
   return JSON.stringify(store);
 }
 

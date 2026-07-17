@@ -185,6 +185,15 @@ test("parses only complete persisted profile stores", () => {
     ),
     null,
   );
+  assert.equal(
+    parseParamsProfileStore(
+      JSON.stringify({
+        ...store,
+        profiles: [store.profiles[0], store.profiles[0]],
+      }),
+    ),
+    null,
+  );
 });
 
 test("creates an initial profile from defaults or empty values", () => {
