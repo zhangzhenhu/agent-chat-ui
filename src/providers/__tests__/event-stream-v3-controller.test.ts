@@ -135,6 +135,9 @@ function createFixture() {
     async stop(...args: unknown[]) {
       calls.push({ method: "stop", args });
     },
+    async hydrate(...args: unknown[]) {
+      calls.push({ method: "hydrate", args });
+    },
   };
 
   const session = new EventStreamV3Session(controller as never);
@@ -331,4 +334,16 @@ test("delegates submit, fork, interrupt responses, stop, and activation", async 
     forkFrom: "checkpoint-1",
   });
   assert.equal(fixture.activationReleaseCount(), 1);
+});
+
+test("keeps the active controller when its generated thread id reaches the URL", async () => {
+  const fixture = createFixture();
+
+  await fixture.session.hydrate("thread-1");
+  await fixture.session.hydrate("thread-2");
+
+  assert.deepEqual(
+    fixture.calls.filter(({ method }) => method === "hydrate"),
+    [{ method: "hydrate", args: ["thread-2"] }],
+  );
 });

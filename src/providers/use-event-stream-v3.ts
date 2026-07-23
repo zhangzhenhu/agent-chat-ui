@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { Client } from "@langchain/langgraph-sdk";
 import {
   StreamController,
@@ -64,6 +64,7 @@ type ControllerLike = {
     responsesById: Record<string, unknown>,
     options?: RespondAllOptions,
   ): Promise<void>;
+  hydrate(threadId: string | null): Promise<void>;
   stop(options?: StreamStopOptions): Promise<void>;
   dispose?(): Promise<void>;
 };
@@ -225,6 +226,13 @@ export class EventStreamV3Session {
     return this.#controller.respondAll(responsesById, options);
   }
 
+  hydrate(threadId: string | null): Promise<void> {
+    if (this.#snapshot.threadId === threadId) {
+      return Promise.resolve();
+    }
+    return this.#controller.hydrate(threadId);
+  }
+
   stop(options?: StreamStopOptions): Promise<void> {
     return this.#controller.stop(options);
   }
@@ -369,6 +377,8 @@ export function useEventStreamV3(
 ): EventStreamV3Value {
   const { apiKey, apiUrl, assistantId, authScheme, onThreadId, threadId } =
     options;
+  const requestedThreadIdRef = useRef(threadId);
+  requestedThreadIdRef.current = threadId;
   const session = useMemo(
     () =>
       createSession({
@@ -377,9 +387,9 @@ export function useEventStreamV3(
         assistantId,
         authScheme,
         onThreadId,
-        threadId,
+        threadId: requestedThreadIdRef.current,
       }),
-    [apiKey, apiUrl, assistantId, authScheme, onThreadId, threadId],
+    [apiKey, apiUrl, assistantId, authScheme, onThreadId],
   );
   const snapshot = useSyncExternalStore(
     session.subscribe,
@@ -388,6 +398,9 @@ export function useEventStreamV3(
   );
 
   useEffect(() => session.activate(), [session]);
+  useEffect(() => {
+    void session.hydrate(threadId);
+  }, [session, threadId]);
 
   return useMemo(() => session.toValue(snapshot), [session, snapshot]);
 }
