@@ -70,6 +70,16 @@ function createFixture() {
   const subscriptions: Record<string, unknown>[] = [];
   const calls: Array<{ method: string; args: unknown[] }> = [];
   const rootStore = new StreamStore(createRootSnapshot());
+  const messageMetadataStore = new StreamStore(
+    new Map([
+      [
+        "ai-1",
+        {
+          parentCheckpointId: "checkpoint-1",
+        },
+      ],
+    ]),
+  );
   let projectionRuntime: { dispose(): Promise<void> | void } | undefined;
   let projectionStore: StreamStore<Event | null> | undefined;
   let releaseCount = 0;
@@ -86,6 +96,7 @@ function createFixture() {
 
   const controller = {
     rootStore,
+    messageMetadataStore,
     registry: {
       acquire(spec: ProjectionSpec<Event | null>) {
         projectionStore = new StreamStore(spec.initial);
@@ -181,6 +192,9 @@ test("projects controller messages and keeps values.messages identical", () => {
   });
   assert.equal(snapshot.values.locale, "zh-CN");
   assert.equal(snapshot.isLoading, true);
+  assert.deepEqual(fixture.session.getMessagesMetadata(snapshot.messages[0]), {
+    parentCheckpointId: "checkpoint-1",
+  });
 });
 
 test("routes root and child custom payloads without terminating on malformed data", async () => {

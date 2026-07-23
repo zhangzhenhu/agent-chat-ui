@@ -1,5 +1,5 @@
 import { useRef, useEffect } from "react";
-import { Checkpoint, Message } from "@langchain/langgraph-sdk";
+import { Message } from "@langchain/langgraph-sdk";
 import { useQueryState, parseAsBoolean } from "nuqs";
 import {
   LoadExternalComponent,
@@ -81,8 +81,11 @@ function MessageBoundCard({
   const thread = useStreamContext();
   const artifact = useArtifact();
   // 优先用传入的 protectedUi（防 child 空快照挤掉 UI 帧），否则回退到 SDK 原始 values.ui。
-  const uiSource = ui ?? ((thread.values as StateType | undefined)?.ui ?? []);
-  const uiMessages = getMessageBoundUiMessages(uiSource as UIMessage[], message);
+  const uiSource = ui ?? (thread.values as StateType | undefined)?.ui ?? [];
+  const uiMessages = getMessageBoundUiMessages(
+    uiSource as UIMessage[],
+    message,
+  );
 
   if (uiMessages.length === 0) {
     return null;
@@ -97,7 +100,11 @@ function MessageBoundCard({
           return (
             <LoadExternalComponent
               key={uiMessage.id}
-              stream={thread as Parameters<typeof LoadExternalComponent>[0]["stream"]}
+              stream={
+                thread as unknown as Parameters<
+                  typeof LoadExternalComponent
+                >[0]["stream"]
+              }
               message={uiMessage}
               meta={{ ui: uiMessage, artifact }}
               components={clientComponents}
@@ -126,7 +133,7 @@ export function AssistantMessage({
 }: {
   message: Message;
   isLoading: boolean;
-  handleRegenerate: (parentCheckpoint: Checkpoint | null | undefined) => void;
+  handleRegenerate: (parentCheckpointId: string | undefined) => void;
   ui?: UIMessage[];
 }) {
   const thread = useStreamContext();
@@ -143,7 +150,7 @@ export function AssistantMessage({
     threadMessages[threadMessages.length - 1]?.id === message.id;
   const isCurrentMessageStreaming = isLoading && isLastMessage;
   const duration = useAnswerTiming(message.id, isCurrentMessageStreaming);
-  const parentCheckpoint = meta?.firstSeenState?.parent_checkpoint;
+  const parentCheckpointId = meta?.parentCheckpointId;
   const contentString = getContentString(message.content);
 
   // 正式 transcript 区不再承担 tool result 的研发态展示；
@@ -161,7 +168,10 @@ export function AssistantMessage({
           </div>
         ) : null}
 
-        <MessageBoundCard message={message} ui={ui} />
+        <MessageBoundCard
+          message={message}
+          ui={ui}
+        />
 
         <div
           className={cn(
@@ -179,7 +189,8 @@ export function AssistantMessage({
             content={contentString}
             isLoading={isLoading}
             isAiMessage={true}
-            handleRegenerate={() => handleRegenerate(parentCheckpoint)}
+            handleRegenerate={() => handleRegenerate(parentCheckpointId)}
+            canFork={!!parentCheckpointId}
             duration={isCurrentMessageStreaming ? null : duration}
           />
         </div>

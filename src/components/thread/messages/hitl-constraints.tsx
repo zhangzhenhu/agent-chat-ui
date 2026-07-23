@@ -1,6 +1,13 @@
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { useStreamContext } from "@/providers/Stream";
+import { getInterruptResponseOptions } from "@/providers/interrupt-response";
 
 type FoodConstraintPayload = {
   kind?: string;
@@ -17,18 +24,10 @@ export function FoodConstraintsInterrupt({
 }) {
   const thread = useStreamContext();
 
-  const handleChoice = (value: string) => {
+  const handleChoice = async (value: string) => {
     // 这类 food interrupt 来自官方 interrupt/resume 链路；点击后必须恢复当前 run，
     // 而不是再追加一条新的普通 human message。
-    thread.submit(
-      {},
-      {
-        command: { resume: value },
-        streamMode: ["values"],
-        streamSubgraphs: true,
-        streamResumable: true,
-      },
-    );
+    await thread.respond(value, getInterruptResponseOptions(thread.interrupt));
   };
 
   const options = interrupt.options ?? [
@@ -52,7 +51,7 @@ export function FoodConstraintsInterrupt({
             key={option.value}
             variant="outline"
             className="border-amber-300 bg-white text-amber-950 hover:bg-amber-100"
-            onClick={() => handleChoice(option.value)}
+            onClick={() => void handleChoice(option.value)}
           >
             {option.label}
           </Button>

@@ -10,6 +10,7 @@ import { useQueryState } from "nuqs";
 import { constructOpenInStudioURL, buildDecisionFromState } from "../utils";
 import { Decision, HITLRequest, DecisionType, ActionRequest } from "../types";
 import { useStreamContext } from "@/providers/Stream";
+import { getInterruptResponseOptions } from "@/providers/interrupt-response";
 
 interface ThreadActionsViewProps {
   interrupt: Interrupt<HITLRequest>;
@@ -167,7 +168,7 @@ export function ThreadActionsView({
     window.open(studioUrl, "_blank");
   };
 
-  const handleApproveAll = useCallback(() => {
+  const handleApproveAll = useCallback(async () => {
     if (!hasMultipleActions) return;
 
     try {
@@ -175,13 +176,9 @@ export function ThreadActionsView({
         type: "approve",
       }));
 
-      stream.submit(
-        {},
-        {
-          command: {
-            resume: { decisions: allDecisions },
-          },
-        },
+      await stream.respond(
+        { decisions: allDecisions },
+        getInterruptResponseOptions(interrupt),
       );
 
       toast("Success", {
@@ -197,9 +194,9 @@ export function ThreadActionsView({
         duration: 5000,
       });
     }
-  }, [actionRequests, hasMultipleActions, stream]);
+  }, [actionRequests, hasMultipleActions, interrupt, stream]);
 
-  const handleSubmitAll = useCallback(() => {
+  const handleSubmitAll = useCallback(async () => {
     if (!hasMultipleActions) return;
 
     if (addressedActions.size !== actionRequests.length) {
@@ -222,13 +219,9 @@ export function ThreadActionsView({
         return decision;
       });
 
-      stream.submit(
-        {},
-        {
-          command: {
-            resume: { decisions: allDecisions },
-          },
-        },
+      await stream.respond(
+        { decisions: allDecisions },
+        getInterruptResponseOptions(interrupt),
       );
 
       toast("Success", {
@@ -247,7 +240,7 @@ export function ThreadActionsView({
     } finally {
       setSubmittingAll(false);
     }
-  }, [actionRequests, addressedActions, hasMultipleActions, stream]);
+  }, [actionRequests, addressedActions, hasMultipleActions, interrupt, stream]);
 
   const allAllowApprove = useMemo(() => {
     if (!hasMultipleActions) return false;

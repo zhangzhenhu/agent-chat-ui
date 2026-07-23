@@ -3,6 +3,7 @@ import { Client } from "@langchain/langgraph-sdk";
 import {
   StreamController,
   type Event,
+  type MessageMetadata,
   type ProjectionSpec,
   type RootSnapshot,
   type StreamRespondAllOptions,
@@ -52,6 +53,7 @@ type AcquiredProjection<T> = {
 
 type ControllerLike = {
   rootStore: ObservableStore<RootSnapshot<Record<string, unknown>, unknown>>;
+  messageMetadataStore?: ObservableStore<ReadonlyMap<string, MessageMetadata>>;
   registry: {
     acquire<T>(spec: ProjectionSpec<T>): AcquiredProjection<T>;
   };
@@ -92,6 +94,7 @@ export type EventStreamV3Value = EventStreamV3Snapshot & {
     options?: RespondAllOptions,
   ): Promise<void>;
   stop(options?: StreamStopOptions): Promise<void>;
+  getMessagesMetadata(message: AppMessage): MessageMetadata | undefined;
 };
 
 function allCustomEventsProjection(): ProjectionSpec<CustomProjectionSnapshot> {
@@ -147,6 +150,7 @@ export class EventStreamV3Session {
   readonly #customProjection: AcquiredProjection<CustomProjectionSnapshot>;
   readonly #unsubscribeRoot: () => void;
   readonly #unsubscribeCustom: () => void;
+  readonly #unsubscribeMetadata: () => void;
 
   #analyticsState: AnalyticsState = EMPTY_ANALYTICS_STATE;
   #thinkingState: ThinkingState = EMPTY_THINKING_STATE;
@@ -170,6 +174,10 @@ export class EventStreamV3Session {
     this.#unsubscribeCustom = this.#customProjection.store.subscribe(() => {
       this.#handleCustomProjection();
     });
+    this.#unsubscribeMetadata =
+      controller.messageMetadataStore?.subscribe(() => {
+        this.#refresh();
+      }) ?? (() => undefined);
   }
 
   readonly subscribe = (listener: () => void) => {
@@ -221,6 +229,11 @@ export class EventStreamV3Session {
     return this.#controller.stop(options);
   }
 
+  getMessagesMetadata(message: AppMessage): MessageMetadata | undefined {
+    if (!message.id) return undefined;
+    return this.#controller.messageMetadataStore?.getSnapshot().get(message.id);
+  }
+
   dispose(): void {
     this.#disposeLocal();
     void this.#controller.dispose?.();
@@ -234,6 +247,7 @@ export class EventStreamV3Session {
       respondAll: (responsesById, options) =>
         this.respondAll(responsesById, options),
       stop: (options) => this.stop(options),
+      getMessagesMetadata: (message) => this.getMessagesMetadata(message),
     };
   }
 
@@ -309,6 +323,7 @@ export class EventStreamV3Session {
     this.#disposed = true;
     this.#unsubscribeRoot();
     this.#unsubscribeCustom();
+    this.#unsubscribeMetadata();
     this.#customProjection.release();
     this.#listeners.clear();
   }
@@ -352,16 +367,19 @@ function createSession(options: UseEventStreamV3Options): EventStreamV3Session {
 export function useEventStreamV3(
   options: UseEventStreamV3Options,
 ): EventStreamV3Value {
+  const { apiKey, apiUrl, assistantId, authScheme, onThreadId, threadId } =
+    options;
   const session = useMemo(
-    () => createSession(options),
-    [
-      options.apiKey,
-      options.apiUrl,
-      options.assistantId,
-      options.authScheme,
-      options.onThreadId,
-      options.threadId,
-    ],
+    () =>
+      createSession({
+        apiKey,
+        apiUrl,
+        assistantId,
+        authScheme,
+        onThreadId,
+        threadId,
+      }),
+    [apiKey, apiUrl, assistantId, authScheme, onThreadId, threadId],
   );
   const snapshot = useSyncExternalStore(
     session.subscribe,

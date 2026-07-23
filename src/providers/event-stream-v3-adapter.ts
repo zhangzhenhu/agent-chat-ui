@@ -1,4 +1,5 @@
 import { isBaseMessage } from "@langchain/core/messages";
+import type { Message } from "@langchain/langgraph-sdk";
 import { toMessageDict } from "@langchain/langgraph-sdk/ui";
 import {
   isRemoveUIMessage,
@@ -8,16 +9,7 @@ import {
   type UIMessage,
 } from "@langchain/langgraph-sdk/react-ui";
 
-export type AppMessage = {
-  id?: string;
-  type: string;
-  content: unknown;
-  tool_calls?: unknown[];
-  invalid_tool_calls?: unknown[];
-  additional_kwargs?: Record<string, unknown>;
-  response_metadata?: Record<string, unknown>;
-  [key: string]: unknown;
-};
+export type AppMessage = Message;
 
 export type ProjectedState = Record<string, unknown> & {
   messages: AppMessage[];

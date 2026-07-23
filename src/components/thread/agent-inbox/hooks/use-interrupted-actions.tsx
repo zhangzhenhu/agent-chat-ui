@@ -13,6 +13,7 @@ import {
 } from "react";
 import { Decision, DecisionWithEdits, HITLRequest, SubmitType } from "../types";
 import { buildDecisionFromState, createDefaultHumanResponse } from "../utils";
+import { getInterruptResponseOptions } from "@/providers/interrupt-response";
 
 interface UseInterruptedActionsInput {
   interrupt: Interrupt<HITLRequest>;
@@ -84,23 +85,8 @@ export default function useInterruptedActions({
     }
   }, [interrupt]);
 
-  const resumeRun = (decisions: Decision[]): boolean => {
-    try {
-      thread.submit(
-        {},
-        {
-          command: {
-            resume: {
-              decisions,
-            },
-          },
-        },
-      );
-      return true;
-    } catch (error) {
-      console.error("Error sending human response", error);
-      return false;
-    }
+  const resumeRun = async (decisions: Decision[]): Promise<void> => {
+    await thread.respond({ decisions }, getInterruptResponseOptions(interrupt));
   };
 
   const handleSubmit = async (
@@ -139,11 +125,7 @@ export default function useInterruptedActions({
       setLoading(true);
       setStreaming(true);
 
-      const resumedSuccessfully = resumeRun([decision]);
-      if (!resumedSuccessfully) {
-        errorOccurred = true;
-        return;
-      }
+      await resumeRun([decision]);
 
       toast("Success", {
         description: "Response submitted successfully.",
@@ -188,14 +170,10 @@ export default function useInterruptedActions({
     initialHumanInterruptEditValue.current = {};
 
     try {
-      thread.submit(
-        {},
-        {
-          command: {
-            goto: END,
-          },
-        },
-      );
+      await thread.respond(undefined, {
+        ...getInterruptResponseOptions(interrupt),
+        goto: END,
+      });
 
       toast("Success", {
         description: "Marked thread as resolved.",
