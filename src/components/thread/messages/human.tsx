@@ -43,26 +43,33 @@ export function HumanMessage({
 }) {
   const thread = useStreamContext();
   const meta = thread.getMessagesMetadata(message);
-  const parentCheckpointId = meta?.parentCheckpointId;
+  const parentCheckpoint = meta?.firstSeenState?.parent_checkpoint;
 
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState("");
   const contentString = getContentString(message.content);
 
   const handleSubmitEdit = () => {
-    if (!parentCheckpointId) return;
     setIsEditing(false);
 
     const newMessage: Message = { type: "human", content: value };
-    void thread.submit(
+    thread.submit(
+      { messages: [newMessage] },
       {
-        ...(meta?.firstSeenValues ?? {}),
-        messages: [
-          ...((meta?.firstSeenValues?.messages as Message[] | undefined) ?? []),
-          newMessage,
-        ],
+        checkpoint: parentCheckpoint,
+        streamMode: ["values"],
+        streamSubgraphs: true,
+        streamResumable: true,
+        optimisticValues: (prev) => {
+          const values = meta?.firstSeenState?.values;
+          if (!values) return prev;
+
+          return {
+            ...values,
+            messages: [...(values.messages ?? []), newMessage],
+          };
+        },
       },
-      { forkFrom: parentCheckpointId },
     );
   };
 
@@ -136,7 +143,6 @@ export function HumanMessage({
             }}
             handleSubmitEdit={handleSubmitEdit}
             isHumanMessage={true}
-            canFork={!!parentCheckpointId}
           />
         </div>
       </div>

@@ -2,11 +2,18 @@ import React, {
   createContext,
   useContext,
   ReactNode,
-  useEffect,
-  useCallback,
   useState,
-  useMemo,
+  useEffect,
 } from "react";
+import { useStream } from "@langchain/langgraph-sdk/react";
+import { type Message } from "@langchain/langgraph-sdk";
+import {
+  uiMessageReducer,
+  isUIMessage,
+  isRemoveUIMessage,
+  type UIMessage,
+  type RemoveUIMessage,
+} from "@langchain/langgraph-sdk/react-ui";
 import { useQueryState } from "nuqs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -20,29 +27,49 @@ import { createClient } from "@/providers/client";
 import { useThreads } from "./Thread";
 import { toast } from "sonner";
 import { getVisibleAssistants } from "@/lib/assistant-options";
-import { composeStreamContextValue } from "./stream-context-value";
 import {
-  useEventStreamV3,
-  type EventStreamV3Value,
-} from "./use-event-stream-v3";
-import type { ProjectedState } from "./event-stream-v3-adapter";
+  appendAnalyticsEvent,
+  EMPTY_ANALYTICS_STATE,
+  isAnalyticsStreamEvent,
+  type AnalyticsState,
+} from "@/components/thread/analytics-state";
+import type {
+  AnalyticsEventEnvelope,
+  ThinkingEventEnvelope,
+} from "@/components/thread/analytics-types";
 import {
-  useThreadBranchHistory,
-  type AppMessageMetadata,
-} from "./thread-branch-history";
-import type { AppMessage } from "./event-stream-v3-adapter";
+  appendThinkingEvent,
+  EMPTY_THINKING_STATE,
+  type ThinkingState,
+} from "@/components/thread/thinking-state";
+import {
+  composeStreamContextValue,
+  isRootStreamNamespace,
+  shouldAcceptThinkingNamespace,
+} from "./stream-context-value";
 
-export type StateType = ProjectedState;
+export type StateType = { messages: Message[]; ui?: UIMessage[] };
+export type StreamCustomEvent =
+  | UIMessage
+  | RemoveUIMessage
+  | AnalyticsEventEnvelope
+  | ThinkingEventEnvelope;
 
-type StreamContextType = Omit<
-  EventStreamV3Value,
-  "values" | "messages" | "getMessagesMetadata"
-> & {
-  values: StateType;
-  messages: AppMessage[];
-  getMessagesMetadata(message: AppMessage): AppMessageMetadata | undefined;
-  setBranch(branch: string): void;
-  isViewingHead: boolean;
+const useTypedStream = useStream<
+  StateType,
+  {
+    UpdateType: {
+      messages?: Message[] | Message | string;
+      ui?: (UIMessage | RemoveUIMessage)[] | UIMessage | RemoveUIMessage;
+      context?: Record<string, unknown>;
+    };
+    CustomEventType: StreamCustomEvent;
+  }
+>;
+
+type StreamContextType = ReturnType<typeof useTypedStream> & {
+  analyticsState: AnalyticsState;
+  thinkingState: ThinkingState;
 };
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
 
@@ -109,32 +136,80 @@ const StreamSession = ({
 }) => {
   const [threadId, setThreadId] = useQueryState("threadId");
   const { getThreads, setThreads } = useThreads();
-  const handleThreadId = useCallback(
-    (id: string) => {
-      void setThreadId(id);
-      // Wait briefly so the newly-created thread is visible in list queries.
-      sleep().then(() => getThreads().then(setThreads).catch(console.error));
-    },
-    [getThreads, setThreadId, setThreads],
+  const [analyticsState, setAnalyticsState] = useState<AnalyticsState>(
+    EMPTY_ANALYTICS_STATE,
   );
-  const streamValue = useEventStreamV3({
+  const [thinkingState, setThinkingState] = useState<ThinkingState>(
+    EMPTY_THINKING_STATE,
+  );
+  const streamValue = useTypedStream(({
     apiUrl,
     apiKey: apiKey ?? undefined,
     assistantId,
-    authScheme,
+    ...(authScheme && {
+      defaultHeaders: {
+        "X-Auth-Scheme": authScheme,
+      },
+    }),
     threadId: threadId ?? null,
-    onThreadId: handleThreadId,
-  });
-  const historyClient = useMemo(
-    () => createClient(apiUrl, apiKey ?? undefined, authScheme),
-    [apiKey, apiUrl, authScheme],
-  );
-  const branchHistory = useThreadBranchHistory({
-    client: historyClient,
-    threadId: streamValue.threadId,
-    liveValues: streamValue.values,
-    liveMetadata: streamValue.getMessagesMetadata,
-    isLoading: streamValue.isLoading,
+    fetchStateHistory: true,
+    filterSubagentMessages: true,
+    onCustomEvent: (
+      event: StreamCustomEvent,
+      options: {
+        namespace: string[] | undefined;
+        mutate: (
+          update:
+            | Partial<StateType>
+            | ((prev: StateType) => Partial<StateType>),
+        ) => void;
+      },
+    ) => {
+      if (isUIMessage(event) || isRemoveUIMessage(event)) {
+        if (!isRootStreamNamespace(options.namespace)) {
+          return;
+        }
+        options.mutate((prev: StateType) => {
+          const ui = uiMessageReducer(prev.ui ?? [], event);
+          return { ...prev, ui };
+        });
+        return;
+      }
+
+      if (isAnalyticsStreamEvent(event)) {
+        setAnalyticsState((prev) =>
+          appendAnalyticsEvent(prev, event as AnalyticsEventEnvelope),
+        );
+        return;
+      }
+
+      if (
+        event &&
+        typeof event === "object" &&
+        (event.kind === "thinking" || event.type === "thinking")
+      ) {
+        const eventName = (event as { event_name?: string }).event_name ?? "";
+        // thinking.entry_added 是后台实时更新机制（如“正在调用 xxx 能力/工具”），
+        // 不管 root 还是 child 都要收，用于实时刷新思考卡。
+        // 其他 thinking 事件（reasoning_delta/phase_started/completed）按“只收 root”
+        // 规则过滤 child——避免把 child specialist 的原始思考流暴露给用户主卡。
+        const isAlwaysAccept = eventName === "thinking.entry_added";
+        if (!isAlwaysAccept && !shouldAcceptThinkingNamespace(options.namespace)) {
+          return;
+        }
+        setThinkingState((prev) =>
+          appendThinkingEvent(prev, event as ThinkingEventEnvelope),
+        );
+      }
+    },
+    onThreadId: (id: string) => {
+      setThreadId(id);
+      // Refetch threads list when thread ID changes.
+      // Wait for some seconds before fetching so we're able to get the new thread that was created.
+      sleep().then(() => getThreads().then(setThreads).catch(console.error));
+    },
+  } as unknown) as Parameters<typeof useTypedStream>[0] & {
+    filterSubagentMessages?: boolean;
   });
 
   useEffect(() => {
@@ -155,19 +230,15 @@ const StreamSession = ({
     });
   }, [apiKey, apiUrl, authScheme]);
 
-  const contextValue = composeStreamContextValue(
-    {
-      ...streamValue,
-      values: branchHistory.values,
-      messages: branchHistory.messages,
-      error: streamValue.error ?? branchHistory.error,
-    },
-    {
-      getMessagesMetadata: branchHistory.getMessagesMetadata,
-      setBranch: branchHistory.setBranch,
-      isViewingHead: branchHistory.isViewingHead,
-    },
-  );
+  useEffect(() => {
+    setAnalyticsState(EMPTY_ANALYTICS_STATE);
+    setThinkingState(EMPTY_THINKING_STATE);
+  }, [threadId, assistantId, apiUrl]);
+
+  const contextValue = composeStreamContextValue(streamValue, {
+    analyticsState,
+    thinkingState,
+  });
 
   return (
     <StreamContext.Provider value={contextValue}>
@@ -220,11 +291,7 @@ function AssistantGate({
 
     setLoading(true);
     setError(null);
-    const client = createClient(
-      apiUrl,
-      apiKey || undefined,
-      authScheme || undefined,
-    );
+    const client = createClient(apiUrl, apiKey || undefined, authScheme || undefined);
     client.assistants
       .search({ limit: 100 })
       .then((result) => {
@@ -232,9 +299,7 @@ function AssistantGate({
         if (list.length > 0) {
           setAssistantId(list[0].assistant_id);
         } else {
-          setError(
-            "No assistants found on this server. Please create one first.",
-          );
+          setError("No assistants found on this server. Please create one first.");
         }
       })
       .catch((err) => {
@@ -260,10 +325,7 @@ function AssistantGate({
       <div className="flex min-h-screen w-full items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
           <p className="text-red-500">{error}</p>
-          <Button
-            variant="outline"
-            onClick={() => setAssistantId("")}
-          >
+          <Button variant="outline" onClick={() => setAssistantId("")}>
             Go back
           </Button>
         </div>
@@ -377,9 +439,7 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
               const formData = new FormData(form);
               const newApiUrl = formData.get("apiUrl") as string;
               const newApiKey = formData.get("apiKey") as string;
-              const newAuthScheme = isAgentBuilder
-                ? AGENT_BUILDER_AUTH_SCHEME
-                : "";
+              const newAuthScheme = isAgentBuilder ? AGENT_BUILDER_AUTH_SCHEME : "";
 
               /**
                * Before entering the chat, verify the deployment:
@@ -392,31 +452,19 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
               setFormLoading(true);
               try {
                 // Step 1: Check if the deployment URL is reachable
-                const ok = await checkGraphStatus(
-                  newApiUrl,
-                  newApiKey || null,
-                  newAuthScheme,
-                );
+                const ok = await checkGraphStatus(newApiUrl, newApiKey || null, newAuthScheme);
                 if (!ok) {
-                  setFormError(
-                    `Cannot connect to ${newApiUrl}. Please check the URL and API key.`,
-                  );
+                  setFormError(`Cannot connect to ${newApiUrl}. Please check the URL and API key.`);
                   setFormLoading(false);
                   return;
                 }
 
                 // Step 2: Check if there are assistants available
-                const client = createClient(
-                  newApiUrl,
-                  newApiKey || undefined,
-                  newAuthScheme || undefined,
-                );
+                const client = createClient(newApiUrl, newApiKey || undefined, newAuthScheme || undefined);
                 const assistants = await client.assistants.search({ limit: 1 });
                 const list = getVisibleAssistants(assistants);
                 if (list.length === 0) {
-                  setFormError(
-                    "No assistants found on this server. Please create one first.",
-                  );
+                  setFormError("No assistants found on this server. Please create one first.");
                   setFormLoading(false);
                   return;
                 }
@@ -429,9 +477,7 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
 
                 form.reset();
               } catch (err) {
-                setFormError(
-                  `Connection failed: ${err instanceof Error ? err.message : "Unknown error"}`,
-                );
+                setFormError(`Connection failed: ${err instanceof Error ? err.message : "Unknown error"}`);
               } finally {
                 setFormLoading(false);
               }
@@ -511,11 +557,7 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
                   Cancel
                 </Button>
               )}
-              <Button
-                type="submit"
-                size="lg"
-                disabled={formLoading}
-              >
+              <Button type="submit" size="lg" disabled={formLoading}>
                 {formLoading ? (
                   <>
                     <Loader2 className="size-4 animate-spin" />

@@ -125,7 +125,6 @@ export function CommandBar({
   handleSubmitEdit,
   handleRegenerate,
   isLoading,
-  canFork = true,
   /**
    * Duration in ms for the AI response (answer phase only, not thinking).
    * Displayed as "2.3s" next to the copy/refresh buttons.
@@ -142,7 +141,6 @@ export function CommandBar({
   handleSubmitEdit?: () => void;
   handleRegenerate?: () => void;
   isLoading: boolean;
-  canFork?: boolean;
   duration?: number | null;
 }) {
   if (isHumanMessage && isAiMessage) {
@@ -188,7 +186,7 @@ export function CommandBar({
           <XIcon />
         </TooltipIconButton>
         <TooltipIconButton
-          disabled={isLoading || !canFork}
+          disabled={isLoading}
           tooltip="Submit"
           variant="secondary"
           onClick={handleSubmitEdit}
@@ -207,7 +205,7 @@ export function CommandBar({
   return (
     <div className="flex items-center gap-2">
       {isAiMessage && duration != null && duration > 0 && (
-        <span className="text-muted-foreground flex items-center gap-1 text-xs">
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
           <Clock className="size-3" />
           {formatDuration(duration)}
         </span>
@@ -218,7 +216,7 @@ export function CommandBar({
       />
       {isAiMessage && !!handleRegenerate && (
         <TooltipIconButton
-          disabled={isLoading || !canFork}
+          disabled={isLoading}
           tooltip="Refresh"
           variant="ghost"
           onClick={handleRegenerate}
@@ -228,7 +226,7 @@ export function CommandBar({
       )}
       {showEdit && (
         <TooltipIconButton
-          disabled={isLoading || !canFork}
+          disabled={isLoading}
           tooltip="Edit"
           variant="ghost"
           onClick={() => {

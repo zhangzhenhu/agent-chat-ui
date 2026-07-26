@@ -6,7 +6,7 @@ import { useStreamContext, useConfigContext } from "@/providers/Stream";
 import { type StateType } from "@/providers/Stream";
 import { useState, FormEvent, useEffect, useMemo } from "react";
 import { Button } from "../ui/button";
-import { Message } from "@langchain/langgraph-sdk";
+import { Checkpoint, Message } from "@langchain/langgraph-sdk";
 import { type UIMessage } from "@langchain/langgraph-sdk/react-ui";
 import { AssistantMessage, AssistantMessageLoading } from "./messages/ai";
 import { HumanMessage } from "./messages/human";
@@ -69,7 +69,9 @@ import {
   type ParamsProfileStore,
 } from "./params-storage";
 import { buildSubmitConfig } from "./submit-config";
-import { PendingInterruptCard } from "./process-trace";
+import {
+  PendingInterruptCard,
+} from "./process-trace";
 import {
   getInternalTraceEntries,
   getInternalTraceEntriesForRun,
@@ -258,10 +260,7 @@ export function Thread() {
   }, [stateValues?.ui, isLoading]);
 
   const messages = useMemo(() => getStateMessages(stateValues), [stateValues]);
-  const interrupt = useMemo(
-    () => getStateInterrupt(stateValues),
-    [stateValues],
-  );
+  const interrupt = useMemo(() => getStateInterrupt(stateValues), [stateValues]);
   const visibleMessages = useMemo(
     () =>
       messages.filter(
@@ -313,8 +312,9 @@ export function Thread() {
     () => resolveThinkingTraceCards(protectedUi),
     [protectedUi],
   );
-  const [thinkingTraceCacheByThreadId, setThinkingTraceCacheByThreadId] =
-    useState<Record<string, ReturnType<typeof resolveThinkingTraceCards>>>({});
+  const [thinkingTraceCacheByThreadId, setThinkingTraceCacheByThreadId] = useState<
+    Record<string, ReturnType<typeof resolveThinkingTraceCards>>
+  >({});
   const [thinkingTraceCacheReady, setThinkingTraceCacheReady] = useState(false);
   useEffect(() => {
     const stored = readThinkingTraceCacheFromSessionStorage();
@@ -382,10 +382,7 @@ export function Thread() {
     });
   }, [durableThinkingCards, transcriptBlocks, thinkingDisplay.snapshot]);
   const telemetryEventsByRunId = useMemo(() => {
-    const eventsByRunId: Record<
-      string,
-      ReturnType<typeof resolveTelemetryEventsForRun>
-    > = {};
+    const eventsByRunId: Record<string, ReturnType<typeof resolveTelemetryEventsForRun>> = {};
     const runIds = new Set<string>();
 
     for (const card of durableThinkingCards) {
@@ -664,13 +661,9 @@ export function Thread() {
     prevMessageLength.current = messages.length;
   }, [messages]);
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (
-      (input.trim().length === 0 && contentBlocks.length === 0) ||
-      isLoading ||
-      !stream.isViewingHead
-    )
+    if ((input.trim().length === 0 && contentBlocks.length === 0) || isLoading)
       return;
     setFirstTokenReceived(false);
 
@@ -700,29 +693,46 @@ export function Thread() {
       Object.assign(submitPayload, customParams.input);
     }
 
-    await stream.submit(
-      submitPayload as {
-        messages: Message[];
-        context?: Record<string, unknown>;
-      },
-      {
-        config: buildSubmitConfig(customParams.configurable),
-      },
+    const submitOptions: Record<string, unknown> = {
+      streamMode: ["values", "custom"],
+      streamSubgraphs: true,
+      streamResumable: true,
+      optimisticValues: (prev: StateType) => ({
+        ...prev,
+        ...(customParams.input || {}),
+        context,
+        messages: [
+          ...(prev.messages ?? []),
+          ...toolMessages,
+          newHumanMessage,
+        ],
+      }),
+    };
+    submitOptions.config = buildSubmitConfig(customParams.configurable);
+
+    stream.submit(
+      submitPayload as { messages: Message[]; context?: Record<string, unknown> },
+      submitOptions as Parameters<typeof stream.submit>[1],
     );
 
     setInput("");
     setContentBlocks([]);
   };
 
-  const handleRegenerate = async (parentCheckpointId: string | undefined) => {
-    if (!parentCheckpointId) return;
+  const handleRegenerate = (
+    parentCheckpoint: Checkpoint | null | undefined,
+  ) => {
     // Do this so the loading state is correct
     prevMessageLength.current = prevMessageLength.current - 1;
     setFirstTokenReceived(false);
-    await stream.submit(undefined, {
-      config: buildSubmitConfig(customParams.configurable),
-      forkFrom: parentCheckpointId,
-    });
+    const options: Record<string, unknown> = {
+      checkpoint: parentCheckpoint,
+      streamMode: ["values", "custom"],
+      streamSubgraphs: true,
+      streamResumable: true,
+    };
+    options.config = buildSubmitConfig(customParams.configurable);
+    stream.submit(undefined, options as Parameters<typeof stream.submit>[1]);
   };
 
   const chatStarted = !!threadId || !!messages.length;
@@ -914,37 +924,33 @@ export function Thread() {
                             message={block.message}
                             isLoading={isLoading}
                           />
-                          {(
-                            historicalThinkingTraceMap[
-                              block.message.id ?? ""
-                            ] ?? []
-                          ).map((thinkingCard) => (
-                            <ThinkingTraceCard
-                              key={thinkingCard.uiId}
-                              snapshot={thinkingCard.snapshot}
-                              isLoading={false}
-                              analyticsEvents={
-                                telemetryEventsByRunId[thinkingCard.runId] ?? []
-                              }
-                              runtimeTraceEntries={
-                                runtimeTraceEntriesByRunId[
-                                  thinkingCard.runId
-                                ] ?? []
-                              }
-                            />
-                          ))}
+                          {(historicalThinkingTraceMap[block.message.id ?? ""] ?? []).map(
+                            (thinkingCard) => (
+                              <ThinkingTraceCard
+                                key={thinkingCard.uiId}
+                                snapshot={thinkingCard.snapshot}
+                                isLoading={false}
+                                analyticsEvents={
+                                  telemetryEventsByRunId[thinkingCard.runId] ?? []
+                                }
+                                runtimeTraceEntries={
+                                  runtimeTraceEntriesByRunId[thinkingCard.runId] ?? []
+                                }
+                              />
+                            ),
+                          )}
                         </div>
                       );
                     }
 
                     return (
-                      <AssistantMessage
-                        key={block.message.id || `assistant-${index}`}
-                        message={block.message}
-                        isLoading={isLoading}
-                        handleRegenerate={handleRegenerate}
-                        ui={protectedUi}
-                      />
+                        <AssistantMessage
+                          key={block.message.id || `assistant-${index}`}
+                          message={block.message}
+                          isLoading={isLoading}
+                          handleRegenerate={handleRegenerate}
+                          ui={protectedUi}
+                        />
                     );
                   })}
                   {thinkingDisplay.snapshot ? (
@@ -954,15 +960,12 @@ export function Thread() {
                       isLoading={isLoading}
                       analyticsEvents={
                         thinkingDisplay.runId
-                          ? (telemetryEventsByRunId[thinkingDisplay.runId] ??
-                            [])
+                          ? telemetryEventsByRunId[thinkingDisplay.runId] ?? []
                           : []
                       }
                       runtimeTraceEntries={
                         thinkingDisplay.runId
-                          ? (runtimeTraceEntriesByRunId[
-                              thinkingDisplay.runId
-                            ] ?? [])
+                          ? runtimeTraceEntriesByRunId[thinkingDisplay.runId] ?? []
                           : []
                       }
                     />
@@ -988,7 +991,9 @@ export function Thread() {
                       />
                     );
                   })}
-                  <PendingInterruptCard interrupt={interrupt} />
+                  <PendingInterruptCard
+                    interrupt={interrupt}
+                  />
                   {isLoading && !firstTokenReceived && (
                     <AssistantMessageLoading />
                   )}
@@ -1106,33 +1111,16 @@ export function Thread() {
                             Cancel
                           </Button>
                         ) : (
-                          <>
-                            {!stream.isViewingHead && (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="ml-auto"
-                                onClick={() => stream.setBranch("")}
-                              >
-                                Latest
-                              </Button>
-                            )}
-                            <Button
-                              type="submit"
-                              className={
-                                stream.isViewingHead
-                                  ? "ml-auto shadow-md transition-all"
-                                  : "shadow-md transition-all"
-                              }
-                              disabled={
-                                isLoading ||
-                                !stream.isViewingHead ||
-                                (!input.trim() && contentBlocks.length === 0)
-                              }
-                            >
-                              Send
-                            </Button>
-                          </>
+                          <Button
+                            type="submit"
+                            className="ml-auto shadow-md transition-all"
+                            disabled={
+                              isLoading ||
+                              (!input.trim() && contentBlocks.length === 0)
+                            }
+                          >
+                            Send
+                          </Button>
                         )}
                       </div>
                     </form>
