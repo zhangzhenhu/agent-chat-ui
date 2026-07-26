@@ -4,6 +4,7 @@ import { useStreamContext } from "@langchain/langgraph-sdk/react-ui";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { withLegacyFamilyAgentStreamOptions } from "@/providers/legacy-familyagent-stream-options";
 
 import { GenerativeComponentShell } from "./component-shell";
 
@@ -37,17 +38,20 @@ export function ChoiceUI(props: ChoiceProps) {
                 if (isCommandResumeChoice) {
                   stream.submit(
                     {},
-                    {
+                    withLegacyFamilyAgentStreamOptions({
                       command: { resume: value },
                       streamMode: ["values"],
                       streamSubgraphs: true,
                       streamResumable: true,
-                    },
+                    }),
                   );
                   return;
                 }
                 // 兼容非阻塞 choice：仍按普通用户消息提交。
-                stream.submit({ messages: [{ type: "human", content: value }] });
+                stream.submit(
+                  { messages: [{ type: "human", content: value }] },
+                  withLegacyFamilyAgentStreamOptions(),
+                );
               }}
               className={cn(
                 "rounded-full px-4",

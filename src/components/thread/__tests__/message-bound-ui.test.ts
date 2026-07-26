@@ -22,14 +22,14 @@ test("getMessageBoundUiMessages keeps unknown UI names bound to the message", ()
       id: "ui-unknown",
       name: "payment_summary",
       props: { amount: 128, due_date: "2026-07-05" },
-      metadata: { message_id: "anchor-1" },
+      metadata: { message_id: "anchor-1", user_visible: true },
     },
     {
       type: "ui",
       id: "ui-other",
       name: "card",
       props: { title: "Other" },
-      metadata: { message_id: "anchor-2" },
+      metadata: { message_id: "anchor-2", user_visible: true },
     },
   ];
 
@@ -48,14 +48,18 @@ test("getMessageBoundUiMessages excludes thinking_trace from generic message-bou
       id: "thinking:run-1",
       name: "thinking_trace",
       props: { status: "active", steps: [] },
-      metadata: { message_id: "anchor-thinking", run_id: "run-1" },
+      metadata: {
+        message_id: "anchor-thinking",
+        run_id: "run-1",
+        user_visible: true,
+      },
     },
     {
       type: "ui",
       id: "ui-unknown",
       name: "payment_summary",
       props: { amount: 128 },
-      metadata: { message_id: "anchor-thinking" },
+      metadata: { message_id: "anchor-thinking", user_visible: true },
     },
   ];
 
@@ -78,11 +82,31 @@ test("hasMessageBoundUi treats an empty AI anchor with bound UI as visible conte
           id: "ui-1",
           name: "card",
           props: { title: "Visible card" },
-          metadata: { message_id: "anchor-empty" },
+          metadata: { message_id: "anchor-empty", user_visible: true },
         },
       ],
       message,
     ),
     true,
+  );
+});
+
+test("hasMessageBoundUi rejects cards that are not user-visible", () => {
+  const message = aiMessage("anchor-internal");
+
+  assert.equal(
+    hasMessageBoundUi(
+      [
+        {
+          type: "ui",
+          id: "ui-internal",
+          name: "card",
+          props: { title: "Internal card" },
+          metadata: { message_id: "anchor-internal", user_visible: false },
+        },
+      ],
+      message,
+    ),
+    false,
   );
 });

@@ -10,6 +10,7 @@ import { useQueryState } from "nuqs";
 import { constructOpenInStudioURL, buildDecisionFromState } from "../utils";
 import { Decision, HITLRequest, DecisionType, ActionRequest } from "../types";
 import { useStreamContext } from "@/providers/Stream";
+import { withLegacyFamilyAgentStreamOptions } from "@/providers/legacy-familyagent-stream-options";
 
 interface ThreadActionsViewProps {
   interrupt: Interrupt<HITLRequest>;
@@ -177,11 +178,11 @@ export function ThreadActionsView({
 
       stream.submit(
         {},
-        {
+        withLegacyFamilyAgentStreamOptions({
           command: {
             resume: { decisions: allDecisions },
           },
-        },
+        }),
       );
 
       toast("Success", {
@@ -224,11 +225,11 @@ export function ThreadActionsView({
 
       stream.submit(
         {},
-        {
+        withLegacyFamilyAgentStreamOptions({
           command: {
             resume: { decisions: allDecisions },
           },
-        },
+        }),
       );
 
       toast("Success", {

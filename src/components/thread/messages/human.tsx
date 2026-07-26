@@ -1,4 +1,4 @@
-import { useStreamContext } from "@/providers/Stream";
+import { type StateType, useStreamContext } from "@/providers/Stream";
 import { Message } from "@langchain/langgraph-sdk";
 import { useState } from "react";
 import { getContentString } from "../utils";
@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { BranchSwitcher, CommandBar } from "./shared";
 import { MultimodalPreview } from "@/components/thread/MultimodalPreview";
 import { isBase64ContentBlock } from "@/lib/multimodal-utils";
+import { withLegacyFamilyAgentStreamOptions } from "@/providers/legacy-familyagent-stream-options";
 
 function EditableContent({
   value,
@@ -55,12 +56,12 @@ export function HumanMessage({
     const newMessage: Message = { type: "human", content: value };
     thread.submit(
       { messages: [newMessage] },
-      {
+      withLegacyFamilyAgentStreamOptions({
         checkpoint: parentCheckpoint,
         streamMode: ["values"],
         streamSubgraphs: true,
         streamResumable: true,
-        optimisticValues: (prev) => {
+        optimisticValues: (prev: StateType) => {
           const values = meta?.firstSeenState?.values;
           if (!values) return prev;
 
@@ -69,7 +70,7 @@ export function HumanMessage({
             messages: [...(values.messages ?? []), newMessage],
           };
         },
-      },
+      }),
     );
   };
 

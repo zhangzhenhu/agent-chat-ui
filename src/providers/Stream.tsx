@@ -139,10 +139,9 @@ const StreamSession = ({
   const [analyticsState, setAnalyticsState] = useState<AnalyticsState>(
     EMPTY_ANALYTICS_STATE,
   );
-  const [thinkingState, setThinkingState] = useState<ThinkingState>(
-    EMPTY_THINKING_STATE,
-  );
-  const streamValue = useTypedStream(({
+  const [thinkingState, setThinkingState] =
+    useState<ThinkingState>(EMPTY_THINKING_STATE);
+  const streamValue = useTypedStream({
     apiUrl,
     apiKey: apiKey ?? undefined,
     assistantId,
@@ -153,7 +152,10 @@ const StreamSession = ({
     }),
     threadId: threadId ?? null,
     fetchStateHistory: true,
-    filterSubagentMessages: true,
+    // deliver_user text may originate in a specialist namespace. Keep every
+    // message frame here; Thread applies the backend's user_visible contract
+    // before anything reaches the user-facing transcript.
+    filterSubagentMessages: false,
     onCustomEvent: (
       event: StreamCustomEvent,
       options: {
@@ -194,7 +196,10 @@ const StreamSession = ({
         // 其他 thinking 事件（reasoning_delta/phase_started/completed）按“只收 root”
         // 规则过滤 child——避免把 child specialist 的原始思考流暴露给用户主卡。
         const isAlwaysAccept = eventName === "thinking.entry_added";
-        if (!isAlwaysAccept && !shouldAcceptThinkingNamespace(options.namespace)) {
+        if (
+          !isAlwaysAccept &&
+          !shouldAcceptThinkingNamespace(options.namespace)
+        ) {
           return;
         }
         setThinkingState((prev) =>
@@ -208,7 +213,7 @@ const StreamSession = ({
       // Wait for some seconds before fetching so we're able to get the new thread that was created.
       sleep().then(() => getThreads().then(setThreads).catch(console.error));
     },
-  } as unknown) as Parameters<typeof useTypedStream>[0] & {
+  } as unknown as Parameters<typeof useTypedStream>[0] & {
     filterSubagentMessages?: boolean;
   });
 
@@ -291,7 +296,11 @@ function AssistantGate({
 
     setLoading(true);
     setError(null);
-    const client = createClient(apiUrl, apiKey || undefined, authScheme || undefined);
+    const client = createClient(
+      apiUrl,
+      apiKey || undefined,
+      authScheme || undefined,
+    );
     client.assistants
       .search({ limit: 100 })
       .then((result) => {
@@ -299,7 +308,9 @@ function AssistantGate({
         if (list.length > 0) {
           setAssistantId(list[0].assistant_id);
         } else {
-          setError("No assistants found on this server. Please create one first.");
+          setError(
+            "No assistants found on this server. Please create one first.",
+          );
         }
       })
       .catch((err) => {
@@ -325,7 +336,10 @@ function AssistantGate({
       <div className="flex min-h-screen w-full items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
           <p className="text-red-500">{error}</p>
-          <Button variant="outline" onClick={() => setAssistantId("")}>
+          <Button
+            variant="outline"
+            onClick={() => setAssistantId("")}
+          >
             Go back
           </Button>
         </div>
@@ -439,7 +453,9 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
               const formData = new FormData(form);
               const newApiUrl = formData.get("apiUrl") as string;
               const newApiKey = formData.get("apiKey") as string;
-              const newAuthScheme = isAgentBuilder ? AGENT_BUILDER_AUTH_SCHEME : "";
+              const newAuthScheme = isAgentBuilder
+                ? AGENT_BUILDER_AUTH_SCHEME
+                : "";
 
               /**
                * Before entering the chat, verify the deployment:
@@ -452,19 +468,31 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
               setFormLoading(true);
               try {
                 // Step 1: Check if the deployment URL is reachable
-                const ok = await checkGraphStatus(newApiUrl, newApiKey || null, newAuthScheme);
+                const ok = await checkGraphStatus(
+                  newApiUrl,
+                  newApiKey || null,
+                  newAuthScheme,
+                );
                 if (!ok) {
-                  setFormError(`Cannot connect to ${newApiUrl}. Please check the URL and API key.`);
+                  setFormError(
+                    `Cannot connect to ${newApiUrl}. Please check the URL and API key.`,
+                  );
                   setFormLoading(false);
                   return;
                 }
 
                 // Step 2: Check if there are assistants available
-                const client = createClient(newApiUrl, newApiKey || undefined, newAuthScheme || undefined);
+                const client = createClient(
+                  newApiUrl,
+                  newApiKey || undefined,
+                  newAuthScheme || undefined,
+                );
                 const assistants = await client.assistants.search({ limit: 1 });
                 const list = getVisibleAssistants(assistants);
                 if (list.length === 0) {
-                  setFormError("No assistants found on this server. Please create one first.");
+                  setFormError(
+                    "No assistants found on this server. Please create one first.",
+                  );
                   setFormLoading(false);
                   return;
                 }
@@ -477,7 +505,9 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
 
                 form.reset();
               } catch (err) {
-                setFormError(`Connection failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+                setFormError(
+                  `Connection failed: ${err instanceof Error ? err.message : "Unknown error"}`,
+                );
               } finally {
                 setFormLoading(false);
               }
@@ -557,7 +587,11 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
                   Cancel
                 </Button>
               )}
-              <Button type="submit" size="lg" disabled={formLoading}>
+              <Button
+                type="submit"
+                size="lg"
+                disabled={formLoading}
+              >
                 {formLoading ? (
                   <>
                     <Loader2 className="size-4 animate-spin" />

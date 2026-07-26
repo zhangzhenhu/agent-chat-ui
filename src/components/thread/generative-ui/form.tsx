@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { withLegacyFamilyAgentStreamOptions } from "@/providers/legacy-familyagent-stream-options";
 import { Textarea } from "@/components/ui/textarea";
 
 import { GenerativeComponentShell } from "./component-shell";
@@ -34,7 +35,8 @@ export function FormUI(props: FormProps) {
   }, [props.schema]);
   const [values, setValues] = useState<Record<string, unknown>>(() =>
     fields.reduce<Record<string, unknown>>((acc, field) => {
-      acc[field.name] = field.defaultValue ?? (field.type === "boolean" ? false : "");
+      acc[field.name] =
+        field.defaultValue ?? (field.type === "boolean" ? false : "");
       return acc;
     }, {}),
   );
@@ -51,7 +53,10 @@ export function FormUI(props: FormProps) {
 
           if (field.type === "boolean") {
             return (
-              <div key={field.name} className="flex items-center justify-between gap-4 rounded-lg border px-3 py-2">
+              <div
+                key={field.name}
+                className="flex items-center justify-between gap-4 rounded-lg border px-3 py-2"
+              >
                 <Label htmlFor={field.name}>{label}</Label>
                 <Switch
                   id={field.name}
@@ -66,14 +71,20 @@ export function FormUI(props: FormProps) {
 
           if (field.type === "textarea") {
             return (
-              <div key={field.name} className="space-y-2">
+              <div
+                key={field.name}
+                className="space-y-2"
+              >
                 <Label htmlFor={field.name}>{label}</Label>
                 <Textarea
                   id={field.name}
                   placeholder={field.placeholder}
                   value={String(value ?? "")}
                   onChange={(e) =>
-                    setValues((prev) => ({ ...prev, [field.name]: e.target.value }))
+                    setValues((prev) => ({
+                      ...prev,
+                      [field.name]: e.target.value,
+                    }))
                   }
                 />
               </div>
@@ -81,14 +92,20 @@ export function FormUI(props: FormProps) {
           }
 
           return (
-            <div key={field.name} className="space-y-2">
+            <div
+              key={field.name}
+              className="space-y-2"
+            >
               <Label htmlFor={field.name}>{label}</Label>
               <Input
                 id={field.name}
                 placeholder={field.placeholder}
                 value={String(value ?? "")}
                 onChange={(e) =>
-                  setValues((prev) => ({ ...prev, [field.name]: e.target.value }))
+                  setValues((prev) => ({
+                    ...prev,
+                    [field.name]: e.target.value,
+                  }))
                 }
               />
             </div>
@@ -98,9 +115,14 @@ export function FormUI(props: FormProps) {
         <Button
           onClick={() => {
             // 当前阶段先把结构化表单值序列化成普通用户消息，优先打通非阻塞 UI 链路。
-            stream.submit({
-              messages: [{ type: "human", content: JSON.stringify(values, null, 2) }],
-            });
+            stream.submit(
+              {
+                messages: [
+                  { type: "human", content: JSON.stringify(values, null, 2) },
+                ],
+              },
+              withLegacyFamilyAgentStreamOptions(),
+            );
           }}
         >
           提交

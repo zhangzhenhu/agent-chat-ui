@@ -1,6 +1,13 @@
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { useStreamContext } from "@/providers/Stream";
+import { withLegacyFamilyAgentStreamOptions } from "@/providers/legacy-familyagent-stream-options";
 
 type FoodConstraintPayload = {
   kind?: string;
@@ -22,12 +29,12 @@ export function FoodConstraintsInterrupt({
     // 而不是再追加一条新的普通 human message。
     thread.submit(
       {},
-      {
+      withLegacyFamilyAgentStreamOptions({
         command: { resume: value },
         streamMode: ["values"],
         streamSubgraphs: true,
         streamResumable: true,
-      },
+      }),
     );
   };
 

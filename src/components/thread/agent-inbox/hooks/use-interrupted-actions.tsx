@@ -1,4 +1,5 @@
 import { useStreamContext } from "@/providers/Stream";
+import { withLegacyFamilyAgentStreamOptions } from "@/providers/legacy-familyagent-stream-options";
 import { END } from "@langchain/langgraph/web";
 import { Interrupt } from "@langchain/langgraph-sdk";
 import { toast } from "sonner";
@@ -88,13 +89,13 @@ export default function useInterruptedActions({
     try {
       thread.submit(
         {},
-        {
+        withLegacyFamilyAgentStreamOptions({
           command: {
             resume: {
               decisions,
             },
           },
-        },
+        }),
       );
       return true;
     } catch (error) {
@@ -190,11 +191,11 @@ export default function useInterruptedActions({
     try {
       thread.submit(
         {},
-        {
+        withLegacyFamilyAgentStreamOptions({
           command: {
             goto: END,
           },
-        },
+        }),
       );
 
       toast("Success", {

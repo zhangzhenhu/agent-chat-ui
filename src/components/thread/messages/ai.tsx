@@ -18,6 +18,7 @@ import {
   GenericUIFallback,
 } from "../generative-ui/component-shell";
 import { getMessageBoundUiMessages } from "../message-bound-ui";
+import { isUserVisibleAiMessage } from "../message-visibility";
 import type { StateType } from "@/providers/Stream";
 
 /**
@@ -81,8 +82,11 @@ function MessageBoundCard({
   const thread = useStreamContext();
   const artifact = useArtifact();
   // 优先用传入的 protectedUi（防 child 空快照挤掉 UI 帧），否则回退到 SDK 原始 values.ui。
-  const uiSource = ui ?? ((thread.values as StateType | undefined)?.ui ?? []);
-  const uiMessages = getMessageBoundUiMessages(uiSource as UIMessage[], message);
+  const uiSource = ui ?? (thread.values as StateType | undefined)?.ui ?? [];
+  const uiMessages = getMessageBoundUiMessages(
+    uiSource as UIMessage[],
+    message,
+  );
 
   if (uiMessages.length === 0) {
     return null;
@@ -97,7 +101,9 @@ function MessageBoundCard({
           return (
             <LoadExternalComponent
               key={uiMessage.id}
-              stream={thread as Parameters<typeof LoadExternalComponent>[0]["stream"]}
+              stream={
+                thread as Parameters<typeof LoadExternalComponent>[0]["stream"]
+              }
               message={uiMessage}
               meta={{ ui: uiMessage, artifact }}
               components={clientComponents}
@@ -141,7 +147,8 @@ export function AssistantMessage({
   const meta = thread.getMessagesMetadata(message);
   const isLastMessage =
     threadMessages[threadMessages.length - 1]?.id === message.id;
-  const isCurrentMessageStreaming = isLoading && isLastMessage;
+  const userVisible = isUserVisibleAiMessage(message);
+  const isCurrentMessageStreaming = userVisible && isLoading && isLastMessage;
   const duration = useAnswerTiming(message.id, isCurrentMessageStreaming);
   const parentCheckpoint = meta?.firstSeenState?.parent_checkpoint;
   const contentString = getContentString(message.content);
@@ -155,34 +162,39 @@ export function AssistantMessage({
   return (
     <div className="group mr-auto flex w-full items-start gap-2">
       <div className="flex w-full flex-col gap-2">
-        {contentString.length > 0 ? (
+        {userVisible && contentString.length > 0 ? (
           <div className="py-1">
             <MarkdownText>{contentString}</MarkdownText>
           </div>
         ) : null}
 
-        <MessageBoundCard message={message} ui={ui} />
+        <MessageBoundCard
+          message={message}
+          ui={ui}
+        />
 
-        <div
-          className={cn(
-            "mr-auto flex items-center gap-2 transition-opacity",
-            "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
-          )}
-        >
-          <BranchSwitcher
-            branch={meta?.branch}
-            branchOptions={meta?.branchOptions}
-            onSelect={(branch) => thread.setBranch(branch)}
-            isLoading={isLoading}
-          />
-          <CommandBar
-            content={contentString}
-            isLoading={isLoading}
-            isAiMessage={true}
-            handleRegenerate={() => handleRegenerate(parentCheckpoint)}
-            duration={isCurrentMessageStreaming ? null : duration}
-          />
-        </div>
+        {userVisible ? (
+          <div
+            className={cn(
+              "mr-auto flex items-center gap-2 transition-opacity",
+              "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
+            )}
+          >
+            <BranchSwitcher
+              branch={meta?.branch}
+              branchOptions={meta?.branchOptions}
+              onSelect={(branch) => thread.setBranch(branch)}
+              isLoading={isLoading}
+            />
+            <CommandBar
+              content={contentString}
+              isLoading={isLoading}
+              isAiMessage={true}
+              handleRegenerate={() => handleRegenerate(parentCheckpoint)}
+              duration={isCurrentMessageStreaming ? null : duration}
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -69,9 +69,9 @@ import {
   type ParamsProfileStore,
 } from "./params-storage";
 import { buildSubmitConfig } from "./submit-config";
-import {
-  PendingInterruptCard,
-} from "./process-trace";
+import { isUserVisibleAiMessage } from "./message-visibility";
+import { withLegacyFamilyAgentStreamOptions } from "@/providers/legacy-familyagent-stream-options";
+import { PendingInterruptCard } from "./process-trace";
 import {
   getInternalTraceEntries,
   getInternalTraceEntriesForRun,
@@ -83,7 +83,6 @@ import {
   splitTranscriptBlocksForThinking,
 } from "./process-trace-helpers";
 import { hasMessageBoundUi } from "./message-bound-ui";
-import { getContentString } from "./utils";
 import { ThinkingTraceCard } from "./thinking-trace-card";
 import { ThreadWorkbench } from "./thread-workbench";
 import { resolveTelemetryEventsForRun } from "./analytics-state";
@@ -260,8 +259,11 @@ export function Thread() {
   }, [stateValues?.ui, isLoading]);
 
   const messages = useMemo(() => getStateMessages(stateValues), [stateValues]);
-  const interrupt = useMemo(() => getStateInterrupt(stateValues), [stateValues]);
-  const visibleMessages = useMemo(
+  const interrupt = useMemo(
+    () => getStateInterrupt(stateValues),
+    [stateValues],
+  );
+  const streamMessages = useMemo(
     () =>
       messages.filter(
         (message) => !message.id?.startsWith(DO_NOT_RENDER_ID_PREFIX),
@@ -275,23 +277,23 @@ export function Thread() {
   // message 整个丢掉，导致 card 不显示。
   const transcriptMessages = useMemo(
     () =>
-      visibleMessages.filter((message) => {
+      streamMessages.filter((message) => {
         if (message.type === "human") {
           return true;
         }
         if (message.type !== "ai") {
           return false;
         }
-        if (getContentString(message.content).trim().length > 0) {
+        if (isUserVisibleAiMessage(message)) {
           return true;
         }
         return hasMessageBoundUi(protectedUi, message);
       }),
-    [visibleMessages, protectedUi],
+    [streamMessages, protectedUi],
   );
   const internalTraceEntries = useMemo(
-    () => getInternalTraceEntries(visibleMessages, isLoading),
-    [visibleMessages, isLoading],
+    () => getInternalTraceEntries(streamMessages, isLoading),
+    [streamMessages, isLoading],
   );
   const transcriptBlocks = useMemo(
     () =>
@@ -312,9 +314,8 @@ export function Thread() {
     () => resolveThinkingTraceCards(protectedUi),
     [protectedUi],
   );
-  const [thinkingTraceCacheByThreadId, setThinkingTraceCacheByThreadId] = useState<
-    Record<string, ReturnType<typeof resolveThinkingTraceCards>>
-  >({});
+  const [thinkingTraceCacheByThreadId, setThinkingTraceCacheByThreadId] =
+    useState<Record<string, ReturnType<typeof resolveThinkingTraceCards>>>({});
   const [thinkingTraceCacheReady, setThinkingTraceCacheReady] = useState(false);
   useEffect(() => {
     const stored = readThinkingTraceCacheFromSessionStorage();
@@ -382,7 +383,10 @@ export function Thread() {
     });
   }, [durableThinkingCards, transcriptBlocks, thinkingDisplay.snapshot]);
   const telemetryEventsByRunId = useMemo(() => {
-    const eventsByRunId: Record<string, ReturnType<typeof resolveTelemetryEventsForRun>> = {};
+    const eventsByRunId: Record<
+      string,
+      ReturnType<typeof resolveTelemetryEventsForRun>
+    > = {};
     const runIds = new Set<string>();
 
     for (const card of durableThinkingCards) {
@@ -693,25 +697,29 @@ export function Thread() {
       Object.assign(submitPayload, customParams.input);
     }
 
-    const submitOptions: Record<string, unknown> = {
-      streamMode: ["values", "custom"],
-      streamSubgraphs: true,
-      streamResumable: true,
-      optimisticValues: (prev: StateType) => ({
-        ...prev,
-        ...(customParams.input || {}),
-        context,
-        messages: [
-          ...(prev.messages ?? []),
-          ...toolMessages,
-          newHumanMessage,
-        ],
-      }),
-    };
+    const submitOptions: Record<string, unknown> =
+      withLegacyFamilyAgentStreamOptions({
+        streamMode: ["values", "custom"],
+        streamSubgraphs: true,
+        streamResumable: true,
+        optimisticValues: (prev: StateType) => ({
+          ...prev,
+          ...(customParams.input || {}),
+          context,
+          messages: [
+            ...(prev.messages ?? []),
+            ...toolMessages,
+            newHumanMessage,
+          ],
+        }),
+      });
     submitOptions.config = buildSubmitConfig(customParams.configurable);
 
     stream.submit(
-      submitPayload as { messages: Message[]; context?: Record<string, unknown> },
+      submitPayload as {
+        messages: Message[];
+        context?: Record<string, unknown>;
+      },
       submitOptions as Parameters<typeof stream.submit>[1],
     );
 
@@ -725,12 +733,14 @@ export function Thread() {
     // Do this so the loading state is correct
     prevMessageLength.current = prevMessageLength.current - 1;
     setFirstTokenReceived(false);
-    const options: Record<string, unknown> = {
-      checkpoint: parentCheckpoint,
-      streamMode: ["values", "custom"],
-      streamSubgraphs: true,
-      streamResumable: true,
-    };
+    const options: Record<string, unknown> = withLegacyFamilyAgentStreamOptions(
+      {
+        checkpoint: parentCheckpoint,
+        streamMode: ["values", "custom"],
+        streamSubgraphs: true,
+        streamResumable: true,
+      },
+    );
     options.config = buildSubmitConfig(customParams.configurable);
     stream.submit(undefined, options as Parameters<typeof stream.submit>[1]);
   };
@@ -924,33 +934,37 @@ export function Thread() {
                             message={block.message}
                             isLoading={isLoading}
                           />
-                          {(historicalThinkingTraceMap[block.message.id ?? ""] ?? []).map(
-                            (thinkingCard) => (
-                              <ThinkingTraceCard
-                                key={thinkingCard.uiId}
-                                snapshot={thinkingCard.snapshot}
-                                isLoading={false}
-                                analyticsEvents={
-                                  telemetryEventsByRunId[thinkingCard.runId] ?? []
-                                }
-                                runtimeTraceEntries={
-                                  runtimeTraceEntriesByRunId[thinkingCard.runId] ?? []
-                                }
-                              />
-                            ),
-                          )}
+                          {(
+                            historicalThinkingTraceMap[
+                              block.message.id ?? ""
+                            ] ?? []
+                          ).map((thinkingCard) => (
+                            <ThinkingTraceCard
+                              key={thinkingCard.uiId}
+                              snapshot={thinkingCard.snapshot}
+                              isLoading={false}
+                              analyticsEvents={
+                                telemetryEventsByRunId[thinkingCard.runId] ?? []
+                              }
+                              runtimeTraceEntries={
+                                runtimeTraceEntriesByRunId[
+                                  thinkingCard.runId
+                                ] ?? []
+                              }
+                            />
+                          ))}
                         </div>
                       );
                     }
 
                     return (
-                        <AssistantMessage
-                          key={block.message.id || `assistant-${index}`}
-                          message={block.message}
-                          isLoading={isLoading}
-                          handleRegenerate={handleRegenerate}
-                          ui={protectedUi}
-                        />
+                      <AssistantMessage
+                        key={block.message.id || `assistant-${index}`}
+                        message={block.message}
+                        isLoading={isLoading}
+                        handleRegenerate={handleRegenerate}
+                        ui={protectedUi}
+                      />
                     );
                   })}
                   {thinkingDisplay.snapshot ? (
@@ -960,12 +974,15 @@ export function Thread() {
                       isLoading={isLoading}
                       analyticsEvents={
                         thinkingDisplay.runId
-                          ? telemetryEventsByRunId[thinkingDisplay.runId] ?? []
+                          ? (telemetryEventsByRunId[thinkingDisplay.runId] ??
+                            [])
                           : []
                       }
                       runtimeTraceEntries={
                         thinkingDisplay.runId
-                          ? runtimeTraceEntriesByRunId[thinkingDisplay.runId] ?? []
+                          ? (runtimeTraceEntriesByRunId[
+                              thinkingDisplay.runId
+                            ] ?? [])
                           : []
                       }
                     />
@@ -991,9 +1008,7 @@ export function Thread() {
                       />
                     );
                   })}
-                  <PendingInterruptCard
-                    interrupt={interrupt}
-                  />
+                  <PendingInterruptCard interrupt={interrupt} />
                   {isLoading && !firstTokenReceived && (
                     <AssistantMessageLoading />
                   )}

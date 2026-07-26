@@ -1,5 +1,6 @@
 import type { Message } from "@langchain/langgraph-sdk";
 import type { UIMessage } from "@langchain/langgraph-sdk/react-ui";
+import { isUserVisibleUiMessage } from "./message-visibility";
 
 type MessageBoundUiCandidate = {
   type?: string;
@@ -23,7 +24,7 @@ export function isMessageBoundUiForMessage(
     return false;
   }
   return (
-    candidate.type === "ui" &&
+    isUserVisibleUiMessage(candidate) &&
     candidate.metadata?.message_id === messageId
   );
 }
