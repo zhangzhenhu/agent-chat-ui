@@ -26,6 +26,15 @@ test("only explicitly marked AI messages are user-visible", () => {
   );
   assert.equal(
     isUserVisibleAiMessage({
+      id: "legacy-delivery-1",
+      type: "ai",
+      content: "旧投影文本",
+      additional_kwargs: { familyagent_user_visible: true },
+    }),
+    true,
+  );
+  assert.equal(
+    isUserVisibleAiMessage({
       id: "unmarked-1",
       type: "ai",
       content: "未授权内容",
@@ -48,6 +57,13 @@ test("only explicitly marked UI messages are user-visible", () => {
       metadata: { user_visible: false },
     }),
     false,
+  );
+  assert.equal(
+    isUserVisibleUiMessage({
+      type: "ui",
+      metadata: { familyagent_user_visible: true },
+    }),
+    true,
   );
   assert.equal(isUserVisibleUiMessage({ type: "ui", metadata: {} }), false);
 });

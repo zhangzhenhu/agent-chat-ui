@@ -1,9 +1,16 @@
 import type { Message } from "@langchain/langgraph-sdk";
 
-export const USER_VISIBLE_KEY = "user_visible";
+export const USER_VISIBLE_KEYS = [
+  "user_visible",
+  "familyagent_user_visible",
+] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function hasUserVisibleFlag(metadata: Record<string, unknown>): boolean {
+  return USER_VISIBLE_KEYS.some((key) => metadata[key] === true);
 }
 
 export function isUserVisibleAiMessage(message: Message): boolean {
@@ -13,9 +20,7 @@ export function isUserVisibleAiMessage(message: Message): boolean {
 
   const additionalKwargs = (message as { additional_kwargs?: unknown })
     .additional_kwargs;
-  return (
-    isRecord(additionalKwargs) && additionalKwargs[USER_VISIBLE_KEY] === true
-  );
+  return isRecord(additionalKwargs) && hasUserVisibleFlag(additionalKwargs);
 }
 
 export function isUserVisibleUiMessage(item: unknown): boolean {
@@ -23,5 +28,5 @@ export function isUserVisibleUiMessage(item: unknown): boolean {
     return false;
   }
 
-  return item.metadata[USER_VISIBLE_KEY] === true;
+  return hasUserVisibleFlag(item.metadata);
 }
