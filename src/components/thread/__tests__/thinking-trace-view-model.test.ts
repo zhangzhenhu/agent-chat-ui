@@ -6,8 +6,9 @@ const {
   buildRenderedThinkingGroups,
   buildVisibleThinkingSteps,
   formatThinkingEntryTime,
+  joinThinkingGroupItems,
 } = await import(
-  new URL("../thinking-trace-view-model.ts", import.meta.url).href,
+  new URL("../thinking-trace-view-model.ts", import.meta.url).href
 );
 
 test("buildRenderedThinkingGroups appends transient items to an existing durable main group", () => {
@@ -90,8 +91,35 @@ test("buildRenderedThinkingGroups prefers durable entry time over transient time
   assert.equal(groups[0].createdAt, "2026-07-12T14:32:18.456+08:00");
 });
 
+test("buildRenderedThinkingGroups keeps a durable entry as one text item", () => {
+  const groups = buildRenderedThinkingGroups({
+    id: "intent",
+    title: "理解需求",
+    status: "active",
+    entries: [
+      {
+        kind: "reasoning",
+        entry_id: "main:family_main_agent",
+        agent_name: "family_main_agent",
+        agent_role: "main",
+        text: "第一段\n第二段",
+      },
+    ],
+  });
+
+  assert.deepEqual(groups[0]?.items, ["第一段\n第二段"]);
+});
+
+test("joinThinkingGroupItems removes pathological character-per-line breaks", () => {
+  assert.equal(joinThinkingGroupItems(["已\n明\n确\n。"]), "已明确。");
+  assert.equal(joinThinkingGroupItems(["第一段\n第二段"]), "第一段\n第二段");
+});
+
 test("formatThinkingEntryTime uses the fixed China timezone and hides invalid values", () => {
-  assert.equal(formatThinkingEntryTime("2026-07-12T06:32:18.456Z"), "2026-07-12 14:32:18");
+  assert.equal(
+    formatThinkingEntryTime("2026-07-12T06:32:18.456Z"),
+    "2026-07-12 14:32:18",
+  );
   assert.equal(formatThinkingEntryTime("not-a-time"), "");
 });
 
@@ -439,10 +467,19 @@ test("buildRenderedFacts merges durable + transient facts and dedupes by entry_i
   );
 
   assert.deepEqual(
-    facts.map((f: { entry_id?: string; text?: string }) => ({ id: f.entry_id, text: f.text })),
+    facts.map((f: { entry_id?: string; text?: string }) => ({
+      id: f.entry_id,
+      text: f.text,
+    })),
     [
-      { id: "fact:need:food_need_specialist:1", text: "正在调用 food-need-intelligence 能力" },
-      { id: "fact:need:food_need_specialist:2", text: "正在调用 publish_need_confirmation 工具" },
+      {
+        id: "fact:need:food_need_specialist:1",
+        text: "正在调用 food-need-intelligence 能力",
+      },
+      {
+        id: "fact:need:food_need_specialist:2",
+        text: "正在调用 publish_need_confirmation 工具",
+      },
     ],
   );
 });

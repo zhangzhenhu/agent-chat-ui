@@ -17,15 +17,13 @@ import type {
   ThinkingTraceSnapshot,
   ThinkingTraceStep,
 } from "./analytics-types";
-import type {
-  ThinkingRunBucket,
-  ThinkingPhaseBucket,
-} from "./thinking-state";
+import type { ThinkingRunBucket, ThinkingPhaseBucket } from "./thinking-state";
 import {
   buildRenderedFacts,
   buildRenderedThinkingGroups,
   buildVisibleThinkingSteps,
   formatThinkingEntryTime,
+  joinThinkingGroupItems,
 } from "./thinking-trace-view-model";
 import { getThinkingStatusLabel } from "./thinking-trace-labels";
 import { AnalyticsSheet } from "./messages/analytics-sheet";
@@ -143,15 +141,8 @@ function ThinkingTraceStepItem({
                       </span>
                     ) : null}
                   </div>
-                  <div className="mt-2 flex flex-col gap-2">
-                    {group.items.map((item, index) => (
-                      <div
-                        key={`${group.entryId}-${index}`}
-                        className="rounded-lg border border-white/70 bg-white/90 px-3 py-2 font-mono text-xs leading-relaxed text-slate-700"
-                      >
-                        {item}
-                      </div>
-                    ))}
+                  <div className="mt-2 rounded-lg border border-white/70 bg-white/90 px-3 py-2 font-mono text-xs leading-relaxed whitespace-pre-wrap text-slate-700">
+                    {joinThinkingGroupItems(group.items)}
                   </div>
                 </div>
               ))}
@@ -237,9 +228,7 @@ export function ThinkingTraceCard({
         </button>
         <div className="flex items-center gap-1">
           <RuntimeTraceSheet entries={runtimeTraceEntries} />
-          <AnalyticsSheet
-            events={analyticsEvents}
-          />
+          <AnalyticsSheet events={analyticsEvents} />
         </div>
       </div>
 

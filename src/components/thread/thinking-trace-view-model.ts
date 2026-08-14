@@ -13,11 +13,27 @@ export type RenderedThinkingGroup = {
   items: string[];
 };
 
+function normalizeThinkingText(text: string): string {
+  const lines = text.split(/\r?\n/);
+  const isCharacterPerLine =
+    lines.length > 1 &&
+    lines.some((line) => line.length > 0) &&
+    lines.every((line) => [...line].length <= 1);
+
+  return isCharacterPerLine ? lines.join("") : text;
+}
+
+export function joinThinkingGroupItems(items: string[]): string {
+  return normalizeThinkingText(items.join(""));
+}
+
 function renderDurableGroups(
   entries: ThinkingTraceStep["entries"] | undefined,
 ): RenderedThinkingGroup[] {
   return (entries ?? [])
-    .filter((entry): entry is ThinkingReasoningEntry => entry.kind === "reasoning")
+    .filter(
+      (entry): entry is ThinkingReasoningEntry => entry.kind === "reasoning",
+    )
     .map((entry) => ({
       entryId: entry.entry_id,
       // 历史 entry 缺失时间时保持属性缺失，避免伪造空的用户态数据。
@@ -25,10 +41,11 @@ function renderDurableGroups(
       agentName: entry.agent_name ?? "unknown-agent",
       agentRole: entry.agent_role ?? "unknown-role",
       // durable 新协议已经把一组 reasoning 片段收口成一段 text。
-      // 这里继续输出 `items[]` 只是为了复用现有卡片展示模型，不再暴露后端旧 `items[]` 合同。
-      items: typeof entry.text === "string" && entry.text
-        ? entry.text.split("\n").filter((item) => item.length > 0)
-        : [],
+      // 保持整个 entry 为一个 item，避免卡片把同一 entry 拆成多个视觉块。
+      items:
+        typeof entry.text === "string" && entry.text
+          ? [normalizeThinkingText(entry.text)]
+          : [],
     }));
 }
 
@@ -100,7 +117,10 @@ export function formatThinkingEntryTime(createdAt: string | undefined): string {
   }
   // formatToParts 避免浏览器 locale 把日期顺序或分隔符改成用户本机习惯。
   const parts = Object.fromEntries(
-    CHINA_TIME_FORMATTER.formatToParts(instant).map((part) => [part.type, part.value]),
+    CHINA_TIME_FORMATTER.formatToParts(instant).map((part) => [
+      part.type,
+      part.value,
+    ]),
   );
   return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
@@ -138,7 +158,9 @@ export function buildRenderedFacts(
 }
 
 function hasDurableGroups(step: ThinkingTraceStep): boolean {
-  return renderDurableGroups(step.entries).some((group) => group.items.length > 0);
+  return renderDurableGroups(step.entries).some(
+    (group) => group.items.length > 0,
+  );
 }
 
 function hasFacts(
