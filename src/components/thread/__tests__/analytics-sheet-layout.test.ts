@@ -26,10 +26,10 @@ test("analytics sheet dialog is wider and resizable", () => {
   );
 });
 
-test("analytics sheet json viewport owns scrolling and shows line numbers", () => {
+test("analytics sheet json viewport scrolls and allows boundary chaining", () => {
   assert.match(
     analyticsSheetSource,
-    /max-h-\[60vh\][\s\S]*overflow-x-auto[\s\S]*overflow-y-scroll[\s\S]*overscroll-contain/,
+    /max-h-\[60vh\][\s\S]*overflow-x-auto[\s\S]*overflow-y-scroll[\s\S]*overscroll-y-auto/,
   );
   assert.match(
     analyticsSheetSource,

@@ -114,7 +114,7 @@ function AnalyticsEventRow({
               </Button>
             </div>
             <div
-              className="max-h-[60vh] select-text overflow-x-auto overflow-y-scroll overscroll-contain text-xs leading-6 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-500/70 [&::-webkit-scrollbar-track]:bg-slate-900/60"
+              className="max-h-[60vh] select-text overflow-x-auto overflow-y-scroll overscroll-y-auto text-xs leading-6 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-500/70 [&::-webkit-scrollbar-track]:bg-slate-900/60"
               style={{ scrollbarGutter: "stable both-edges" }}
             >
               <SyntaxHighlighter
