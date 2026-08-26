@@ -6,6 +6,7 @@ const {
   getInternalTraceEntries,
   getInternalTraceEntriesForRun,
   mapHistoricalThinkingTraceCards,
+  mergeProtectedUiFrames,
   mergeThinkingTraceCards,
   resolveThinkingTrace,
   resolveThinkingTraceCards,
@@ -113,6 +114,31 @@ test("resolveThinkingTrace prefers the latest thinking card in ui state", () => 
     current_phase_id: "intent",
     steps: [],
   });
+});
+
+test("mergeProtectedUiFrames keeps the newest run last after a partial then full snapshot", () => {
+  const oldFrame = {
+    type: "ui" as const,
+    id: "thinking:run-old",
+    name: "thinking_trace",
+    props: { status: "completed", current_phase_id: "need_specialist", steps: [] },
+  };
+  const newFrame = {
+    type: "ui" as const,
+    id: "thinking:run-new",
+    name: "thinking_trace",
+    props: { status: "completed", current_phase_id: "need_specialist", steps: [] },
+  };
+
+  // 真实顺序：子图先只发新 run，root 随后发包含历史卡的完整快照。
+  const afterPartial = mergeProtectedUiFrames([], [newFrame]);
+  const afterFull = mergeProtectedUiFrames(afterPartial, [oldFrame, newFrame]);
+
+  assert.deepEqual(
+    afterFull.map((frame: { id: string }) => frame.id),
+    ["thinking:run-old", "thinking:run-new"],
+  );
+  assert.equal(resolveThinkingTrace(afterFull).runId, "run-new");
 });
 
 test("resolveThinkingTraceCards keeps all durable thinking cards with run and message ids", () => {

@@ -23,6 +23,21 @@ export function isUserVisibleAiMessage(message: Message): boolean {
   return isRecord(additionalKwargs) && hasUserVisibleFlag(additionalKwargs);
 }
 
+export function isUserVisibleHumanMessage(message: Message): boolean {
+  if (message.type !== "human") {
+    return false;
+  }
+
+  const additionalKwargs = (message as { additional_kwargs?: unknown })
+    .additional_kwargs;
+  if (!isRecord(additionalKwargs)) {
+    return true;
+  }
+
+  // User input is unmarked; only explicitly internal synthetic messages are hidden.
+  return !USER_VISIBLE_KEYS.some((key) => additionalKwargs[key] === false);
+}
+
 export function isUserVisibleUiMessage(item: unknown): boolean {
   if (!isRecord(item) || item.type !== "ui" || !isRecord(item.metadata)) {
     return false;

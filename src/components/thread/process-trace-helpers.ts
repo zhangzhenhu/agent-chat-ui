@@ -1,6 +1,7 @@
 "use client";
 
 import type { AIMessage, Message } from "@langchain/langgraph-sdk";
+import type { UIMessage } from "@langchain/langgraph-sdk/react-ui";
 
 import type { InternalTraceEntry } from "./process-trace";
 import type { ThinkingTraceSnapshot } from "./analytics-types";
@@ -20,6 +21,42 @@ export type ThinkingTraceCardEntry = {
   messageId: string;
   snapshot: ThinkingTraceSnapshot;
 };
+
+/**
+ * 合并 values 快照中的 UI 帧，并保持当前快照声明的顺序。
+ *
+ * 子图 values 可能只携带当前 run 的 Thinking 卡，随后 root values 又携带完整历史卡。
+ * 更新 Map 中已有 id 时，普通 `set` 不会移动插入位置，旧卡就可能落到数组末尾并被
+ * `resolveThinkingTrace` 错误选中。因此每次覆盖前先删除，再按当前快照顺序插入。
+ */
+export function mergeProtectedUiFrames(
+  previous: UIMessage[],
+  current: UIMessage[],
+): UIMessage[] {
+  const currentThinkingIds = new Set(
+    current
+      .filter((item) => item.name === "thinking_trace")
+      .map((item) => item.id),
+  );
+  const retained =
+    currentThinkingIds.size > 0
+      ? previous.filter(
+          (item) =>
+            currentThinkingIds.has(item.id) || item.name !== "thinking_trace",
+        )
+      : previous;
+
+  const merged = new Map<string, UIMessage>();
+  for (const item of retained) {
+    merged.set(item.id, item);
+  }
+  for (const item of current) {
+    // Map.set(existingKey) 不改变顺序；删除后再插入才能让当前快照成为权威顺序。
+    merged.delete(item.id);
+    merged.set(item.id, item);
+  }
+  return [...merged.values()];
+}
 
 export function mergeThinkingTraceCards(
   previous: ThinkingTraceCardEntry[],

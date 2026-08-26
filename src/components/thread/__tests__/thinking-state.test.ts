@@ -22,15 +22,23 @@ test("appendThinkingEvent stores reasoning deltas by run phase and entry_id", as
   });
 
   assert.deepEqual(
-    next.byRunId["run-1"].phases["need_specialist"].groups["need:food_need_specialist"].items,
-    [{ text: "补充预算", agentName: "food_need_specialist", agentRole: "need" }],
+    next.byRunId["run-1"].phases["need_specialist"].groups[
+      "need:food_need_specialist"
+    ].items,
+    [
+      {
+        text: "补充预算",
+        agentName: "food_need_specialist",
+        agentRole: "need",
+      },
+    ],
   );
   assert.equal(next.latestRunId, "run-1");
 });
 
 test("appendThinkingEvent keeps the first timestamp for canonical thinking.chunk", async () => {
   const { EMPTY_THINKING_STATE, appendThinkingEvent } = await import(
-    new URL("../thinking-state.ts", import.meta.url).href,
+    new URL("../thinking-state.ts", import.meta.url).href
   );
 
   const first = appendThinkingEvent(EMPTY_THINKING_STATE, {
@@ -60,7 +68,8 @@ test("appendThinkingEvent keeps the first timestamp for canonical thinking.chunk
     },
   });
 
-  const group = second.byRunId["run-1"].phases.intent.groups["main:family_main_agent"];
+  const group =
+    second.byRunId["run-1"].phases.intent.groups["main:family_main_agent"];
   assert.equal(group.createdAt, "2026-07-12T14:32:18.456+08:00");
   assert.equal(group.items.length, 2);
 });
@@ -123,11 +132,21 @@ test("appendThinkingEvent marks all run phases flushed when the run-level thinki
 
   // thinking.completed 是 run 级收口：当前 run 下所有 phase 的所有 entry 都应 flushed。
   assert.deepEqual(
-    completed.byRunId["run-1"].phases["need_specialist"].groups["need:food_need_specialist"].items,
-    [{ text: "补充预算", agentName: "food_need_specialist", agentRole: "need" }],
+    completed.byRunId["run-1"].phases["need_specialist"].groups[
+      "need:food_need_specialist"
+    ].items,
+    [
+      {
+        text: "补充预算",
+        agentName: "food_need_specialist",
+        agentRole: "need",
+      },
+    ],
   );
   assert.equal(
-    completed.byRunId["run-1"].phases["need_specialist"].groups["need:food_need_specialist"].flushed,
+    completed.byRunId["run-1"].phases["need_specialist"].groups[
+      "need:food_need_specialist"
+    ].flushed,
     true,
   );
   assert.equal(completed.latestRunId, "run-1");
@@ -167,6 +186,9 @@ test("appendThinkingEvent stores entry_added facts by phase and dedupes by entry
       agent_role: "need",
       text: "正在调用 food-need-intelligence 能力",
       created_at: "2026-07-12T14:32:18.456+08:00",
+      status: undefined,
+      source: undefined,
+      updated_at: undefined,
     },
   ]);
   assert.equal(next.latestRunId, "run-1");
@@ -209,5 +231,56 @@ test("appendThinkingEvent stores entry_added facts by phase and dedupes by entry
       },
     },
   });
-  assert.equal(next2.byRunId["run-1"].phases["need_specialist"].facts.length, 2);
+  assert.equal(
+    next2.byRunId["run-1"].phases["need_specialist"].facts.length,
+    2,
+  );
+});
+
+test("appendThinkingEvent upserts entry_updated facts by entry_id", async () => {
+  const { EMPTY_THINKING_STATE, appendThinkingEvent } = await import(
+    new URL("../thinking-state.ts", import.meta.url).href
+  );
+
+  const added = appendThinkingEvent(EMPTY_THINKING_STATE, {
+    kind: "thinking",
+    event_name: "thinking.entry_added",
+    context: { run_id: "run-1" },
+    payload: {
+      phase_id: "need_specialist",
+      entry: {
+        entry_id: "fact-1",
+        kind: "fact",
+        text: "开始排查",
+      },
+    },
+  });
+  const updated = appendThinkingEvent(added, {
+    kind: "thinking",
+    event_name: "thinking.entry_updated",
+    context: { run_id: "run-1" },
+    payload: {
+      phase_id: "need_specialist",
+      entry: {
+        entry_id: "fact-1",
+        kind: "fact",
+        text: "排查已完成",
+        status: "completed",
+      },
+    },
+  });
+
+  assert.deepEqual(updated.byRunId["run-1"].phases["need_specialist"].facts, [
+    {
+      kind: "fact",
+      entry_id: "fact-1",
+      text: "排查已完成",
+      status: "completed",
+      created_at: undefined,
+      updated_at: undefined,
+      agent_name: undefined,
+      agent_role: undefined,
+      source: undefined,
+    },
+  ]);
 });

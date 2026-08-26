@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { isUserVisibleAiMessage, isUserVisibleUiMessage } = await import(
-  new URL("../message-visibility.ts", import.meta.url).href
-);
+const {
+  isUserVisibleAiMessage,
+  isUserVisibleHumanMessage,
+  isUserVisibleUiMessage,
+} = await import(new URL("../message-visibility.ts", import.meta.url).href);
 
 test("only explicitly marked AI messages are user-visible", () => {
   assert.equal(
@@ -38,6 +40,35 @@ test("only explicitly marked AI messages are user-visible", () => {
       id: "unmarked-1",
       type: "ai",
       content: "未授权内容",
+    }),
+    false,
+  );
+});
+
+test("hides only explicitly internal human messages", () => {
+  assert.equal(
+    isUserVisibleHumanMessage({
+      id: "user-1",
+      type: "human",
+      content: "用户输入",
+    }),
+    true,
+  );
+  assert.equal(
+    isUserVisibleHumanMessage({
+      id: "internal-1",
+      type: "human",
+      content: "本轮输入语义：内部委派",
+      additional_kwargs: { familyagent_user_visible: false },
+    }),
+    false,
+  );
+  assert.equal(
+    isUserVisibleHumanMessage({
+      id: "legacy-internal-1",
+      type: "human",
+      content: "内部委派上下文",
+      additional_kwargs: { user_visible: false },
     }),
     false,
   );

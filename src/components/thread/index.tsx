@@ -69,7 +69,10 @@ import {
   type ParamsProfileStore,
 } from "./params-storage";
 import { buildSubmitConfig } from "./submit-config";
-import { isUserVisibleAiMessage } from "./message-visibility";
+import {
+  isUserVisibleAiMessage,
+  isUserVisibleHumanMessage,
+} from "./message-visibility";
 import { withLegacyFamilyAgentStreamOptions } from "@/providers/legacy-familyagent-stream-options";
 import { PendingInterruptCard } from "./process-trace";
 import {
@@ -77,6 +80,7 @@ import {
   getInternalTraceEntriesForRun,
   buildTranscriptBlocks,
   mapHistoricalThinkingTraceCards,
+  mergeProtectedUiFrames,
   mergeThinkingTraceCards,
   resolveThinkingTrace,
   resolveThinkingTraceCards,
@@ -169,6 +173,40 @@ function getStateInterrupt(values: StateType | undefined): unknown {
   return raw.length === 1 ? raw[0] : raw;
 }
 
+function summarizeThinkingUiFrames(
+  frames: UIMessage[],
+): Array<Record<string, unknown>> {
+  return frames
+    .filter((frame) => frame.name === "thinking_trace")
+    .map((frame) => {
+      const props = frame.props as Record<string, unknown> | undefined;
+      const steps = Array.isArray(props?.steps) ? props.steps : [];
+      return {
+        id: frame.id,
+        runId: frame.metadata?.run_id ?? frame.id?.replace(/^thinking:/, ""),
+        status: props?.status,
+        currentPhaseId: props?.current_phase_id,
+        stepCount: steps.length,
+        entryCount: steps.reduce((total, step) => {
+          if (!step || typeof step !== "object") return total;
+          const entries = (step as { entries?: unknown }).entries;
+          return total + (Array.isArray(entries) ? entries.length : 0);
+        }, 0),
+      };
+    });
+}
+
+function logThinkingUiMerge(
+  stage: string,
+  details: Record<string, unknown>,
+): void {
+  // 诊断 values/UI 帧重排时，只记录结构摘要，不记录 fact 正文或用户数据。
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+  console.info("[thinking-trace-debug] protected-ui", { stage, ...details });
+}
+
 export function Thread() {
   const [artifactContext, setArtifactContext] = useArtifactContext();
   const [artifactOpen, closeArtifact] = useArtifactOpen();
@@ -227,6 +265,15 @@ export function Thread() {
       (it as { type?: string }).type === "ui";
     const currentUi = current.filter(isUi);
 
+    logThinkingUiMerge("input", {
+      threadId,
+      isLoading,
+      currentThinkingFrames: summarizeThinkingUiFrames(currentUi),
+      previousThinkingFrames: summarizeThinkingUiFrames(
+        prevUiFramesRef.current,
+      ),
+    });
+
     if (currentUi.length > 0) {
       // 新 run 信号：thinking_trace 帧的 id 形如 thinking:<run_id>，run 切换时
       // 新 id 出现 → 清掉 ref 里不属于当前 run 的旧帧（thinking_trace + 跟随它的 card）。
@@ -241,12 +288,15 @@ export function Thread() {
           (it) => currentThinkingIds.has(it.id) || it.name !== "thinking_trace",
         );
       }
-      // upsert 当前快照的 UI 帧（同 id 覆盖、新 id 追加）。
-      const merged = new Map<string, UIMessage>();
-      for (const it of prevUiFramesRef.current) merged.set(it.id, it);
-      for (const it of currentUi) merged.set(it.id, it);
-      const next = [...merged.values()];
+      // 当前快照声明的顺序优先，避免旧 run 因 Map 的历史插入位置被选为最新卡。
+      const next = mergeProtectedUiFrames(prevUiFramesRef.current, currentUi);
       prevUiFramesRef.current = next;
+      logThinkingUiMerge("output", {
+        threadId,
+        currentThinkingFrames: summarizeThinkingUiFrames(currentUi),
+        protectedThinkingFrames: summarizeThinkingUiFrames(next),
+        selectedCandidate: summarizeThinkingUiFrames(next).at(-1) ?? null,
+      });
       return next;
     }
 
@@ -279,7 +329,7 @@ export function Thread() {
     () =>
       streamMessages.filter((message) => {
         if (message.type === "human") {
-          return true;
+          return isUserVisibleHumanMessage(message);
         }
         if (message.type !== "ai") {
           return false;
@@ -310,6 +360,24 @@ export function Thread() {
     () => resolveThinkingTrace(protectedUi),
     [protectedUi],
   );
+  useEffect(() => {
+    // 记录展示层最终选择的卡片，和 protected-ui 数组顺序进行对照。
+    if (process.env.NODE_ENV === "production") {
+      return;
+    }
+    console.info("[thinking-trace-debug] render-selection", {
+      threadId,
+      runId: thinkingTrace.runId,
+      status: thinkingTrace.snapshot?.status,
+      currentPhaseId: thinkingTrace.snapshot?.current_phase_id,
+      stepCount: thinkingTrace.snapshot?.steps?.length ?? 0,
+      entryCount:
+        thinkingTrace.snapshot?.steps?.reduce(
+          (total, step) => total + (step.entries?.length ?? 0),
+          0,
+        ) ?? 0,
+    });
+  }, [threadId, thinkingTrace]);
   const durableThinkingCardsInView = useMemo(
     () => resolveThinkingTraceCards(protectedUi),
     [protectedUi],

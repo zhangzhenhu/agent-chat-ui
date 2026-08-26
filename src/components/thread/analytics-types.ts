@@ -76,6 +76,9 @@ export type ThinkingFactEntry = {
   agent_name?: string;
   agent_role?: string;
   text?: string;
+  status?: string;
+  source?: string;
+  updated_at?: string;
 };
 
 export type ThinkingReasoningEntry = {

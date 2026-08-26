@@ -1,4 +1,7 @@
-import type { ThinkingEventEnvelope, ThinkingFactEntry } from "./analytics-types";
+import type {
+  ThinkingEventEnvelope,
+  ThinkingFactEntry,
+} from "./analytics-types";
 
 export type ThinkingDeltaItem = {
   text: string;
@@ -73,7 +76,9 @@ function getEntryId(event: ThinkingEventEnvelope): string {
 
 // thinking.entry_added 的 fact 在 payload.entry 里（frontend-06 第 447-457 行）：
 // {entry_id, kind:"fact", text, agent_name, agent_role}。这里安全解析成 ThinkingFactEntry。
-function parseEntryFact(payload: ThinkingEventEnvelope["payload"]): ThinkingFactEntry | null {
+function parseEntryFact(
+  payload: ThinkingEventEnvelope["payload"],
+): ThinkingFactEntry | null {
   const entry = (payload as { entry?: unknown } | undefined)?.entry;
   if (!entry || typeof entry !== "object") {
     return null;
@@ -90,6 +95,9 @@ function parseEntryFact(payload: ThinkingEventEnvelope["payload"]): ThinkingFact
     agent_name: normalizeString(e.agent_name) || undefined,
     agent_role: normalizeString(e.agent_role) || undefined,
     text,
+    status: normalizeString(e.status) || undefined,
+    source: normalizeString(e.source) || undefined,
+    updated_at: normalizeString(e.updated_at) || undefined,
   };
 }
 
@@ -128,7 +136,10 @@ export function appendThinkingEvent(
   // reasoning chunk 是唯一需要 phase + entry 粒度的文本增量事件。
   // thinking.completed 是 run 级收口，只需要 runId（见下方分支）。
   // `thinking.chunk` 是当前协议；旧名称仅作为渐进部署时的读兼容。
-  if (eventName === "thinking.chunk" || eventName === "thinking.reasoning_delta") {
+  if (
+    eventName === "thinking.chunk" ||
+    eventName === "thinking.reasoning_delta"
+  ) {
     const entryId = getEntryId(event);
     if (!phaseId || !entryId) {
       return prev;
@@ -148,7 +159,8 @@ export function appendThinkingEvent(
     ];
     const existingGroup = phaseBucket.groups[entryId];
     // 同一 entry 的后续 chunk 只能复用首时间，不能让迟到事件改写用户看到的顺序。
-    const createdAt = existingGroup?.createdAt || getEntryCreatedAt(event) || undefined;
+    const createdAt =
+      existingGroup?.createdAt || getEntryCreatedAt(event) || undefined;
 
     return {
       byRunId: {
@@ -212,6 +224,42 @@ export function appendThinkingEvent(
     };
   }
 
+  // 新增的兼容事件：旧前端没有该分支时会忽略它，最终 durable snapshot 仍提供正确结果；
+  // 当前代码按稳定 entry_id 覆盖已有 fact，缺失时降级为追加。
+  if (eventName === "thinking.entry_updated") {
+    if (!phaseId) {
+      return prev;
+    }
+    const fact = parseEntryFact(event.payload);
+    if (!fact) {
+      return prev;
+    }
+    const runBucket = ensureRunBucket(prev, runId);
+    const phaseBucket = ensurePhaseBucket(runBucket, phaseId);
+    const key = fact.entry_id ?? fact.text;
+    const index = phaseBucket.facts.findIndex(
+      (item) => (item.entry_id ?? item.text) === key,
+    );
+    const facts = [...phaseBucket.facts];
+    if (index >= 0) {
+      facts[index] = fact;
+    } else {
+      facts.push(fact);
+    }
+    return {
+      byRunId: {
+        ...prev.byRunId,
+        [runId]: {
+          phases: {
+            ...runBucket.phases,
+            [phaseId]: { ...phaseBucket, facts },
+          },
+        },
+      },
+      latestRunId: runId,
+    };
+  }
+
   // thinking.completed 表示“本轮 thinking 整体收口”（frontend-06 第 395 行），
   // 不是单个 phase 结束。这里把当前 run 下所有 phase 的所有 group 标记 flushed，
   // 让展示层知道 transient reasoning 增量已 durable 化、可以停止临时叠加。
@@ -225,14 +273,16 @@ export function appendThinkingEvent(
         {
           facts: phaseBucket.facts,
           groups: Object.fromEntries(
-            Object.entries(phaseBucket.groups).map(([existingEntryId, group]) => [
-              existingEntryId,
-              {
-                items: group.items,
-                createdAt: group.createdAt,
-                flushed: true,
-              },
-            ]),
+            Object.entries(phaseBucket.groups).map(
+              ([existingEntryId, group]) => [
+                existingEntryId,
+                {
+                  items: group.items,
+                  createdAt: group.createdAt,
+                  flushed: true,
+                },
+              ],
+            ),
           ),
         },
       ]),

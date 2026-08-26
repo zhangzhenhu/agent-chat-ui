@@ -73,6 +73,31 @@ type StreamContextType = ReturnType<typeof useTypedStream> & {
 };
 const StreamContext = createContext<StreamContextType | undefined>(undefined);
 
+function logThinkingUiEvent(
+  event: UIMessage,
+  namespace: string[] | undefined,
+): void {
+  // 诊断 Thinking 卡重绘问题时，只记录结构摘要，不记录用户业务正文。
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+  const props = event.props as Record<string, unknown> | undefined;
+  const steps = Array.isArray(props?.steps) ? props.steps : [];
+  console.info("[thinking-trace-debug] custom-ui", {
+    namespace: namespace ?? [],
+    id: event.id,
+    runId: event.metadata?.run_id ?? event.id?.replace(/^thinking:/, ""),
+    status: props?.status,
+    currentPhaseId: props?.current_phase_id,
+    stepCount: steps.length,
+    entryCount: steps.reduce((total, step) => {
+      if (!step || typeof step !== "object") return total;
+      const entries = (step as { entries?: unknown }).entries;
+      return total + (Array.isArray(entries) ? entries.length : 0);
+    }, 0),
+  });
+}
+
 /**
  * ConfigContext provides deployment configuration (URL, API key, assistant ID, etc.)
  * to any component in the tree, avoiding prop drilling.
@@ -171,6 +196,9 @@ const StreamSession = ({
         if (!isRootStreamNamespace(options.namespace)) {
           return;
         }
+        if (isUIMessage(event) && event.name === "thinking_trace") {
+          logThinkingUiEvent(event, options.namespace);
+        }
         options.mutate((prev: StateType) => {
           const ui = uiMessageReducer(prev.ui ?? [], event);
           return { ...prev, ui };
@@ -191,11 +219,13 @@ const StreamSession = ({
         (event.kind === "thinking" || event.type === "thinking")
       ) {
         const eventName = (event as { event_name?: string }).event_name ?? "";
-        // thinking.entry_added 是后台实时更新机制（如“正在调用 xxx 能力/工具”），
+        // thinking.entry_added/entry_updated 是后台实时更新机制（如“正在调用 xxx 能力/工具”），
         // 不管 root 还是 child 都要收，用于实时刷新思考卡。
         // 其他 thinking 事件（reasoning_delta/phase_started/completed）按“只收 root”
         // 规则过滤 child——避免把 child specialist 的原始思考流暴露给用户主卡。
-        const isAlwaysAccept = eventName === "thinking.entry_added";
+        const isAlwaysAccept =
+          eventName === "thinking.entry_added" ||
+          eventName === "thinking.entry_updated";
         if (
           !isAlwaysAccept &&
           !shouldAcceptThinkingNamespace(options.namespace)
