@@ -1,20 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const analyticsSheetSource = await import(
-  "node:fs/promises"
-).then((fs) =>
+const analyticsSheetSource = await import("node:fs/promises").then((fs) =>
   fs.readFile(
     new URL("../messages/analytics-sheet.tsx", import.meta.url),
-    "utf8",
-  ),
-);
-
-const syntaxHighlighterSource = await import(
-  "node:fs/promises"
-).then((fs) =>
-  fs.readFile(
-    new URL("../syntax-highlighter.tsx", import.meta.url),
     "utf8",
   ),
 );
@@ -31,43 +20,25 @@ test("analytics sheet json viewport scrolls and allows boundary chaining", () =>
     analyticsSheetSource,
     /max-h-\[60vh\][\s\S]*overflow-x-auto[\s\S]*overflow-y-scroll[\s\S]*overscroll-y-auto/,
   );
-  assert.match(
-    analyticsSheetSource,
-    /select-text/,
-  );
-  assert.match(
-    analyticsSheetSource,
-    /\[&::-webkit-scrollbar\]:w-2/,
-  );
+  assert.match(analyticsSheetSource, /select-text/);
+  assert.match(analyticsSheetSource, /\[&::-webkit-scrollbar\]:w-2/);
   assert.match(
     analyticsSheetSource,
     /\[&::-webkit-scrollbar-thumb\]:rounded-full/,
   );
-  assert.match(
-    analyticsSheetSource,
-    /scrollbarGutter: "stable both-edges"/,
-  );
-  assert.match(
-    analyticsSheetSource,
-    /padding: "1rem 1rem 2rem"/,
-  );
-  assert.match(analyticsSheetSource, /showLineNumbers/);
-  assert.match(analyticsSheetSource, /preTag="div"/);
+  assert.match(analyticsSheetSource, /scrollbarGutter: "stable both-edges"/);
+  assert.match(analyticsSheetSource, /JsonView/);
+  assert.match(analyticsSheetSource, /collapseAllNested/);
+  assert.match(analyticsSheetSource, /telemetryJsonStyles/);
+  assert.match(analyticsSheetSource, /quotesForFieldNames: true/);
+  assert.match(analyticsSheetSource, /stringifyStringValues: true/);
+  assert.match(analyticsSheetSource, /aria-label="Telemetry event JSON"/);
 });
 
 test("analytics event json header exposes a copy action", () => {
-  assert.match(
-    analyticsSheetSource,
-    /Copy JSON/,
-  );
-  assert.match(
-    analyticsSheetSource,
-    /navigator\.clipboard\.writeText/,
-  );
-  assert.match(
-    analyticsSheetSource,
-    /handleCopy/,
-  );
+  assert.match(analyticsSheetSource, /Copy JSON/);
+  assert.match(analyticsSheetSource, /navigator\.clipboard\.writeText/);
+  assert.match(analyticsSheetSource, /handleCopy/);
 });
 
 test("analytics sheet event list exposes a visible vertical scroller", () => {
@@ -101,18 +72,16 @@ test("analytics sheet labels telemetry as a unified timeline and surfaces event 
     analyticsSheetSource,
     /Unified timeline across root and child telemetry events/,
   );
-  assert.match(
-    analyticsSheetSource,
-    /run \${runId}/,
-  );
-  assert.match(
-    analyticsSheetSource,
-    /tool \${toolCallId}/,
-  );
+  assert.match(analyticsSheetSource, /run \${runId}/);
+  assert.match(analyticsSheetSource, /tool \${toolCallId}/);
 });
 
-test("syntax highlighter supports analytics-specific viewport overrides", () => {
-  assert.match(syntaxHighlighterSource, /customStyle\?: CSSProperties;/);
-  assert.match(syntaxHighlighterSource, /showLineNumbers\?: boolean;/);
-  assert.match(syntaxHighlighterSource, /preTag\?: ElementType;/);
+test("analytics sheet loads the JSON viewer styles globally", async () => {
+  const globalsSource = await import("node:fs/promises").then((fs) =>
+    fs.readFile(new URL("../../../app/globals.css", import.meta.url), "utf8"),
+  );
+  assert.match(
+    globalsSource,
+    /@import "react-json-view-lite\/dist\/index\.css";/,
+  );
 });

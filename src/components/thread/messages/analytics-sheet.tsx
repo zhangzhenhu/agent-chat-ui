@@ -1,10 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BarChart3, CheckIcon, ChevronDown, ChevronRight, CopyIcon } from "lucide-react";
+import {
+  BarChart3,
+  CheckIcon,
+  ChevronDown,
+  ChevronRight,
+  CopyIcon,
+} from "lucide-react";
+import { collapseAllNested, darkStyles, JsonView } from "react-json-view-lite";
 
 import { Button } from "@/components/ui/button";
-import { SyntaxHighlighter } from "@/components/thread/syntax-highlighter";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +22,14 @@ import {
 import type { AnalyticsEventEnvelope } from "../analytics-types";
 import { formatAnalyticsEventJson } from "./analytics-sheet-format";
 
+const telemetryJsonStyles = {
+  ...darkStyles,
+  childFieldsContainer: `${darkStyles.childFieldsContainer} ml-4`,
+  container: `${darkStyles.container} p-4 pb-8`,
+  quotesForFieldNames: true,
+  stringifyStringValues: true,
+};
+
 type AnalyticsSheetProps = {
   events: AnalyticsEventEnvelope[];
 };
@@ -26,14 +40,17 @@ function buildSummary(event: AnalyticsEventEnvelope): string {
     event.type === "telemetry"
       ? [event.event_scope, event.event_phase].filter(Boolean).join(".")
       : "";
-  const componentName = event.subject?.component_name || event.subject?.agent_name || "";
+  const componentName =
+    event.subject?.component_name || event.subject?.agent_name || "";
   const status =
     typeof event.payload?.status === "string"
       ? event.payload.status
       : typeof event.output?.result_type === "string"
         ? event.output.result_type
         : "";
-  return [phaseLabel || eventName, componentName, status].filter(Boolean).join(" · ");
+  return [phaseLabel || eventName, componentName, status]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function buildMeta(event: AnalyticsEventEnvelope): string {
@@ -59,7 +76,10 @@ function AnalyticsEventRow({
   const [copied, setCopied] = useState(false);
   const summary = useMemo(() => buildSummary(event), [event]);
   const meta = useMemo(() => buildMeta(event), [event]);
-  const formattedEvent = useMemo(() => formatAnalyticsEventJson(event), [event]);
+  const formattedEvent = useMemo(
+    () => formatAnalyticsEventJson(event),
+    [event],
+  );
 
   const handleCopy = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
@@ -83,9 +103,7 @@ function AnalyticsEventRow({
             {event.emitted_at ?? ""}
           </div>
           {meta ? (
-            <div className="mt-1 text-[11px] text-slate-400">
-              {meta}
-            </div>
+            <div className="mt-1 text-[11px] text-slate-400">{meta}</div>
           ) : null}
         </div>
         {open ? (
@@ -109,27 +127,24 @@ function AnalyticsEventRow({
                 className="h-7 px-2 text-[11px] text-slate-300 hover:bg-white/10 hover:text-white"
                 onClick={handleCopy}
               >
-                {copied ? <CheckIcon className="size-3.5 text-emerald-400" /> : <CopyIcon className="size-3.5" />}
+                {copied ? (
+                  <CheckIcon className="size-3.5 text-emerald-400" />
+                ) : (
+                  <CopyIcon className="size-3.5" />
+                )}
                 <span>Copy JSON</span>
               </Button>
             </div>
             <div
-              className="max-h-[60vh] select-text overflow-x-auto overflow-y-scroll overscroll-y-auto text-xs leading-6 [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-500/70 [&::-webkit-scrollbar-track]:bg-slate-900/60"
+              className="max-h-[60vh] overflow-x-auto overflow-y-scroll overscroll-y-auto text-xs leading-6 select-text [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-500/70 [&::-webkit-scrollbar-track]:bg-slate-900/60"
               style={{ scrollbarGutter: "stable both-edges" }}
             >
-              <SyntaxHighlighter
-                language="js"
-                className="text-xs"
-                preTag="div"
-                showLineNumbers
-                wrapLongLines={false}
-                customStyle={{
-                  padding: "1rem 1rem 2rem",
-                  overflow: "visible",
-                }}
-              >
-                {formattedEvent}
-              </SyntaxHighlighter>
+              <JsonView
+                aria-label="Telemetry event JSON"
+                data={event}
+                shouldExpandNode={collapseAllNested}
+                style={telemetryJsonStyles}
+              />
             </div>
           </div>
         </div>
@@ -143,7 +158,10 @@ export function AnalyticsSheet({ events }: AnalyticsSheetProps) {
 
   return (
     <Dialog>
-      <DialogTrigger asChild disabled={disabled}>
+      <DialogTrigger
+        asChild
+        disabled={disabled}
+      >
         <Button
           variant="ghost"
           size="sm"
