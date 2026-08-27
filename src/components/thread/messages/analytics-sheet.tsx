@@ -8,7 +8,7 @@ import {
   ChevronRight,
   CopyIcon,
 } from "lucide-react";
-import { collapseAllNested, darkStyles, JsonView } from "react-json-view-lite";
+import { allExpanded, darkStyles, JsonView } from "react-json-view-lite";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -142,7 +142,7 @@ function AnalyticsEventRow({
               <JsonView
                 aria-label="Telemetry event JSON"
                 data={event}
-                shouldExpandNode={collapseAllNested}
+                shouldExpandNode={allExpanded}
                 style={telemetryJsonStyles}
               />
             </div>

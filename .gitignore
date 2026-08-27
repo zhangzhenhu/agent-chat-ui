@@ -27,6 +27,8 @@ dist-ssr
 .langgraph_api
 .env
 .next/
+.electron-build/
+dist-electron/
 next-env.d.ts
 
 # TS incremental build info

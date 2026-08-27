@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { ReactNode, useRef } from "react";
+import { Fragment, ReactNode, useRef } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useStreamContext, useConfigContext } from "@/providers/Stream";
@@ -25,6 +25,9 @@ import {
   XIcon,
   Plus,
   Settings,
+  Globe2,
+  ChevronDown,
+  Check,
 } from "lucide-react";
 import { useQueryState, parseAsBoolean } from "nuqs";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
@@ -54,9 +57,11 @@ import {
   appendAndSelectParamsProfile,
   buildStoredParamsDraft,
   createInitialParamsProfileStore,
+  addBuiltInParamsProfiles,
   createParamsProfile,
   deleteActiveParamsProfile,
   getActiveParamsProfile,
+  getParamsProfileForEnvironment,
   LEGACY_PARAMS_STORAGE_KEY,
   migrateStoredParamsDraft,
   PARAMS_PROFILES_STORAGE_KEY,
@@ -95,6 +100,14 @@ import {
   writeThinkingTraceCacheToSessionStorage,
 } from "./thinking-trace-cache";
 import { resolveThinkingTraceDisplay } from "./thinking-trace-display";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
+import { useRuntimeConfig } from "@/providers/runtime-config";
 
 function StickyToBottomContent(props: {
   content: ReactNode;
@@ -158,6 +171,93 @@ function OpenGitHubRepo() {
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+function getUrlHost(apiUrl: string): string {
+  try {
+    return new URL(apiUrl).host;
+  } catch {
+    return apiUrl;
+  }
+}
+
+function EnvironmentSwitcher({
+  onEnvironmentSwitch,
+}: {
+  onEnvironmentSwitch: () => void;
+}) {
+  const { apiUrl, environmentName } = useConfigContext();
+  const runtime = useRuntimeConfig();
+
+  if (!runtime.isElectron) {
+    return (
+      <span
+        className="text-muted-foreground inline-flex max-w-48 items-center gap-1 truncate rounded-md border bg-white/80 px-2 py-1 text-xs"
+        title={apiUrl}
+      >
+        <Globe2 className="size-3 shrink-0" />
+        <span className="truncate">
+          {environmentName} · {getUrlHost(apiUrl)}
+        </span>
+      </span>
+    );
+  }
+
+  const selectedEnvironment =
+    runtime.environments.find((item) => item.id === runtime.environmentId) ??
+    runtime.environments[0];
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Switch environment, current ${selectedEnvironment?.name ?? environmentName}`}
+          className="text-muted-foreground hover:text-foreground inline-flex max-w-56 items-center gap-1.5 rounded-md border bg-white/80 px-2 py-1 text-xs transition-colors hover:bg-white"
+          title={`Switch environment (current: ${selectedEnvironment?.name ?? environmentName})`}
+        >
+          <Globe2 className="size-3 shrink-0" />
+          <span className="truncate">
+            {selectedEnvironment?.name ?? environmentName} ·{" "}
+            {getUrlHost(apiUrl)}
+          </span>
+          <ChevronDown className="size-3 shrink-0" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="w-64"
+      >
+        <div className="text-muted-foreground px-2 py-1.5 text-[11px] font-medium tracking-wide uppercase">
+          Environments
+        </div>
+        {runtime.environments.map((environment, index) => (
+          <Fragment key={environment.id}>
+            {index > 0 && !environment.builtIn && <DropdownMenuSeparator />}
+            <DropdownMenuItem
+              onSelect={() => {
+                if (environment.id === runtime.environmentId) return;
+                runtime.selectEnvironment(environment.id);
+                onEnvironmentSwitch();
+              }}
+              className="items-start"
+            >
+              <Globe2 className="mt-0.5 size-4" />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate font-medium">{environment.name}</span>
+                <span className="text-muted-foreground truncate text-xs">
+                  {getUrlHost(environment.apiUrl)}
+                </span>
+              </span>
+              {environment.id === runtime.environmentId && (
+                <Check className="mt-0.5 size-4" />
+              )}
+            </DropdownMenuItem>
+          </Fragment>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -235,7 +335,8 @@ export function Thread() {
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
 
   const stream = useStreamContext();
-  const { setShowConfig, apiUrl, apiKey, authScheme } = useConfigContext();
+  const { setShowConfig, apiUrl, apiKey, authScheme, environmentId } =
+    useConfigContext();
   const stateValues = stream.values as StateType | undefined;
   const isLoading = stream.isLoading;
 
@@ -541,7 +642,7 @@ export function Thread() {
           )
         : null;
     if (cachedProfileStore) {
-      setParamsProfileStore(cachedProfileStore);
+      setParamsProfileStore(addBuiltInParamsProfiles(cachedProfileStore));
       setParamsLoaded(true);
       paramsLoadedRef.current = true;
       return;
@@ -555,11 +656,13 @@ export function Thread() {
         : null;
     if (legacyDraft) {
       setParamsProfileStore(
-        migrateStoredParamsDraft({
-          legacyDraft,
-          id: crypto.randomUUID(),
-          updatedAt: new Date().toISOString(),
-        }),
+        addBuiltInParamsProfiles(
+          migrateStoredParamsDraft({
+            legacyDraft,
+            id: crypto.randomUUID(),
+            updatedAt: new Date().toISOString(),
+          }),
+        ),
       );
       setParamsLoaded(true);
       paramsLoadedRef.current = true;
@@ -585,20 +688,24 @@ export function Thread() {
             ? data.input
             : null;
         setParamsProfileStore(
-          createInitialParamsProfileStore({
-            defaults: { configurable, input },
-            id: crypto.randomUUID(),
-            updatedAt: new Date().toISOString(),
-          }),
+          addBuiltInParamsProfiles(
+            createInitialParamsProfileStore({
+              defaults: { configurable, input },
+              id: crypto.randomUUID(),
+              updatedAt: new Date().toISOString(),
+            }),
+          ),
         );
       })
       .catch(() => {
         setParamsProfileStore(
-          createInitialParamsProfileStore({
-            defaults: null,
-            id: crypto.randomUUID(),
-            updatedAt: new Date().toISOString(),
-          }),
+          addBuiltInParamsProfiles(
+            createInitialParamsProfileStore({
+              defaults: null,
+              id: crypto.randomUUID(),
+              updatedAt: new Date().toISOString(),
+            }),
+          ),
         );
       })
       .finally(() => {
@@ -606,6 +713,19 @@ export function Thread() {
       });
     paramsLoadedRef.current = true;
   }, []);
+
+  // Keep the built-in Parameters profile aligned with the active environment.
+  useEffect(() => {
+    if (!paramsLoaded || !paramsProfileStore) return;
+    const profile = getParamsProfileForEnvironment(
+      paramsProfileStore,
+      environmentId,
+    );
+    if (!profile || profile.id === paramsProfileStore.activeProfileId) return;
+    setParamsProfileStore((current) =>
+      current ? selectParamsProfile(current, profile.id) : current,
+    );
+  }, [environmentId, paramsLoaded, paramsProfileStore]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !paramsProfileStore) {
@@ -893,6 +1013,9 @@ export function Thread() {
                   </Button>
                 )}
                 <AssistantSelector />
+                <EnvironmentSwitcher
+                  onEnvironmentSwitch={() => void _setThreadId(null)}
+                />
               </div>
               <div className="absolute top-2 right-4 flex items-center gap-2">
                 <TooltipIconButton
@@ -949,6 +1072,9 @@ export function Thread() {
                 <div className="ml-2">
                   <AssistantSelector />
                 </div>
+                <EnvironmentSwitcher
+                  onEnvironmentSwitch={() => void _setThreadId(null)}
+                />
               </div>
 
               <div className="flex items-center gap-4">

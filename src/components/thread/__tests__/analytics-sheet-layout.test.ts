@@ -28,7 +28,7 @@ test("analytics sheet json viewport scrolls and allows boundary chaining", () =>
   );
   assert.match(analyticsSheetSource, /scrollbarGutter: "stable both-edges"/);
   assert.match(analyticsSheetSource, /JsonView/);
-  assert.match(analyticsSheetSource, /collapseAllNested/);
+  assert.match(analyticsSheetSource, /shouldExpandNode=\{allExpanded\}/);
   assert.match(analyticsSheetSource, /telemetryJsonStyles/);
   assert.match(analyticsSheetSource, /quotesForFieldNames: true/);
   assert.match(analyticsSheetSource, /stringifyStringValues: true/);

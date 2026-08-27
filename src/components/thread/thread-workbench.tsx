@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   BookCopy,
   CheckIcon,
@@ -21,9 +21,9 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { collapseAllNested, darkStyles, JsonView } from "react-json-view-lite";
 
 import { MarkdownText } from "./markdown-text";
-import { SyntaxHighlighter } from "./syntax-highlighter";
 import {
   buildWorkbenchCacheKey,
   getChildStateSpecialist,
@@ -182,34 +182,28 @@ function PanelTabs<T extends string>({
   );
 }
 
-function JsonViewport({
-  title,
-  value,
-}: {
-  title: string;
-  value: unknown;
-}) {
-  const formatted = useMemo(() => formatJson(value), [value]);
+function JsonViewport({ title, value }: { title: string; value: unknown }) {
+  const jsonData =
+    value && typeof value === "object" ? value : { value: value ?? null };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-[#0b1020]">
       <div className="border-b border-white/10 px-4 py-2 text-[11px] font-semibold tracking-[0.12em] text-slate-300 uppercase">
         {title}
       </div>
-      <div className="min-h-0 flex-1 overflow-auto overscroll-contain text-xs leading-6">
-        <SyntaxHighlighter
-          language="js"
-          className="text-xs"
-          preTag="div"
-          showLineNumbers
-          wrapLongLines={false}
-          customStyle={{
-            padding: "1rem",
-            overflow: "visible",
+      <div className="min-h-0 flex-1 overflow-auto overscroll-y-auto font-mono text-xs leading-6 select-text">
+        <JsonView
+          aria-label={`${title} JSON`}
+          data={jsonData}
+          shouldExpandNode={collapseAllNested}
+          style={{
+            ...darkStyles,
+            childFieldsContainer: `${darkStyles.childFieldsContainer} ml-4`,
+            container: `${darkStyles.container} p-4 pb-8`,
+            quotesForFieldNames: true,
+            stringifyStringValues: true,
           }}
-        >
-          {formatted}
-        </SyntaxHighlighter>
+        />
       </div>
     </div>
   );
@@ -340,7 +334,9 @@ function StatePanel({
           </div>
         ) : null}
         <JsonViewport
-          title={activeTab === "main" ? "Current State JSON" : "Child State JSON"}
+          title={
+            activeTab === "main" ? "Current State JSON" : "Child State JSON"
+          }
           value={jsonValue}
         />
       </div>
@@ -377,7 +373,7 @@ function SkillsPanel({
   const listState = listCache[listKey] ?? EMPTY_SKILLS_LIST;
   const selectedPath = selectedSkillPathByTab[activeTab] ?? null;
   const detailState = selectedPath
-    ? detailCache[selectedPath] ?? EMPTY_SKILL_FILE
+    ? (detailCache[selectedPath] ?? EMPTY_SKILL_FILE)
     : EMPTY_SKILL_FILE;
   const skills = listState.data?.skills ?? [];
 
@@ -433,7 +429,9 @@ function SkillsPanel({
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
             {listState.status === "loading" && !listState.data ? (
-              <div className="px-4 py-6 text-sm text-slate-500">正在加载 skill 清单…</div>
+              <div className="px-4 py-6 text-sm text-slate-500">
+                正在加载 skill 清单…
+              </div>
             ) : null}
             {listState.status === "error" && !listState.data ? (
               <div className="px-4 py-6 text-sm text-red-700">
@@ -441,7 +439,9 @@ function SkillsPanel({
               </div>
             ) : null}
             {listState.status === "empty" ? (
-              <div className="px-4 py-6 text-sm text-slate-500">当前 tab 暂无 skill。</div>
+              <div className="px-4 py-6 text-sm text-slate-500">
+                当前 tab 暂无 skill。
+              </div>
             ) : null}
             {skills.length > 0 ? (
               <div className="flex flex-col">
@@ -467,7 +467,9 @@ function SkillsPanel({
                       ) : null}
                       <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-400">
                         <span className="truncate">{skill.path}</span>
-                        {active ? <CheckIcon className="size-3.5 text-teal-600" /> : null}
+                        {active ? (
+                          <CheckIcon className="size-3.5 text-teal-600" />
+                        ) : null}
                       </div>
                     </button>
                   );
@@ -483,7 +485,7 @@ function SkillsPanel({
             {selectedPath ? (
               <>
                 <span className="text-slate-500">•</span>
-                <span className="truncate normal-case tracking-normal text-slate-400">
+                <span className="truncate tracking-normal text-slate-400 normal-case">
                   {selectedPath}
                 </span>
               </>
@@ -526,21 +528,31 @@ function SkillsPanel({
 
           <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
             {!selectedPath ? (
-              <div className="px-4 py-6 text-sm text-slate-400">选择一个 skill 后在这里查看详情。</div>
+              <div className="px-4 py-6 text-sm text-slate-400">
+                选择一个 skill 后在这里查看详情。
+              </div>
             ) : null}
-            {selectedPath && detailState.status === "loading" && !detailState.data ? (
-              <div className="px-4 py-6 text-sm text-slate-400">正在加载 skill 文件…</div>
+            {selectedPath &&
+            detailState.status === "loading" &&
+            !detailState.data ? (
+              <div className="px-4 py-6 text-sm text-slate-400">
+                正在加载 skill 文件…
+              </div>
             ) : null}
-            {selectedPath && detailState.status === "error" && !detailState.data ? (
+            {selectedPath &&
+            detailState.status === "error" &&
+            !detailState.data ? (
               <div className="px-4 py-6 text-sm text-red-300">
                 {detailState.error ?? "skill 文件请求失败"}
               </div>
             ) : null}
             {selectedPath && detailState.status === "empty" ? (
-              <div className="px-4 py-6 text-sm text-slate-400">当前 skill 文件不存在或内容为空。</div>
+              <div className="px-4 py-6 text-sm text-slate-400">
+                当前 skill 文件不存在或内容为空。
+              </div>
             ) : null}
             {selectedPath && detailState.data?.content ? (
-              <pre className="whitespace-pre-wrap px-4 py-4 font-mono text-xs leading-6 text-slate-100">
+              <pre className="px-4 py-4 font-mono text-xs leading-6 whitespace-pre-wrap text-slate-100">
                 {detailState.data.content}
               </pre>
             ) : null}
@@ -571,11 +583,15 @@ function MemoryPanel({
     <>
       <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4">
         <div className="flex flex-col gap-2">
-          <div className="text-xs font-medium text-slate-600">current_user_id</div>
+          <div className="text-xs font-medium text-slate-600">
+            current_user_id
+          </div>
           <div className="flex items-center gap-2">
             <Input
               value={currentUserIdDraft}
-              onChange={(event) => onCurrentUserIdDraftChange(event.target.value)}
+              onChange={(event) =>
+                onCurrentUserIdDraftChange(event.target.value)
+              }
               placeholder="输入 current_user_id 后自动请求"
               className="h-9"
             />
@@ -616,21 +632,37 @@ function MemoryPanel({
           </div>
           <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
             {!hasUserId ? (
-              <div className="text-sm text-slate-500">输入 `current_user_id` 后查看长期记忆。</div>
+              <div className="text-sm text-slate-500">
+                输入 `current_user_id` 后查看长期记忆。
+              </div>
             ) : null}
-            {hasUserId && memoryState.status === "loading" && !memoryState.data ? (
+            {hasUserId &&
+            memoryState.status === "loading" &&
+            !memoryState.data ? (
               <div className="text-sm text-slate-500">正在加载长期记忆…</div>
             ) : null}
-            {hasUserId && memoryState.status === "error" && !memoryState.data ? (
-              <div className="text-sm text-red-700">{memoryState.error ?? "长期记忆请求失败"}</div>
+            {hasUserId &&
+            memoryState.status === "error" &&
+            !memoryState.data ? (
+              <div className="text-sm text-red-700">
+                {memoryState.error ?? "长期记忆请求失败"}
+              </div>
             ) : null}
             {hasUserId && memoryState.status === "empty" ? (
-              <div className="text-sm text-slate-500">当前用户暂无长期记忆。</div>
+              <div className="text-sm text-slate-500">
+                当前用户暂无长期记忆。
+              </div>
             ) : null}
-            {hasUserId && memoryState.status === "success" && !memoryMarkdown ? (
-              <div className="text-sm text-slate-500">当前用户暂无长期记忆。</div>
+            {hasUserId &&
+            memoryState.status === "success" &&
+            !memoryMarkdown ? (
+              <div className="text-sm text-slate-500">
+                当前用户暂无长期记忆。
+              </div>
             ) : null}
-            {memoryMarkdown ? <MarkdownText>{memoryMarkdown}</MarkdownText> : null}
+            {memoryMarkdown ? (
+              <MarkdownText>{memoryMarkdown}</MarkdownText>
+            ) : null}
           </div>
         </div>
 
@@ -780,7 +812,16 @@ export function ThreadWorkbench({
     return () => {
       cancelled = true;
     };
-  }, [activePanel, activeStateTab, threadId, apiUrl, apiKey, authScheme, activeStateCacheKey, stateRefreshToken]);
+  }, [
+    activePanel,
+    activeStateTab,
+    threadId,
+    apiUrl,
+    apiKey,
+    authScheme,
+    activeStateCacheKey,
+    stateRefreshToken,
+  ]);
 
   useEffect(() => {
     if (activePanel !== "skills") {
@@ -837,7 +878,9 @@ export function ThreadWorkbench({
             : false;
           return {
             ...prev,
-            [activeSkillsTab]: hasCurrent ? current : (data.skills[0]?.path ?? null),
+            [activeSkillsTab]: hasCurrent
+              ? current
+              : (data.skills[0]?.path ?? null),
           };
         });
       })
@@ -857,7 +900,16 @@ export function ThreadWorkbench({
     return () => {
       cancelled = true;
     };
-  }, [activePanel, activeSkillsTab, threadId, apiUrl, apiKey, authScheme, activeSkillsListCacheKey, skillsListRefreshToken]);
+  }, [
+    activePanel,
+    activeSkillsTab,
+    threadId,
+    apiUrl,
+    apiKey,
+    authScheme,
+    activeSkillsListCacheKey,
+    skillsListRefreshToken,
+  ]);
 
   useEffect(() => {
     if (activePanel !== "skills") {
@@ -927,7 +979,14 @@ export function ThreadWorkbench({
     return () => {
       cancelled = true;
     };
-  }, [activePanel, activeSkillPath, apiUrl, apiKey, authScheme, skillDetailRefreshToken]);
+  }, [
+    activePanel,
+    activeSkillPath,
+    apiUrl,
+    apiKey,
+    authScheme,
+    skillDetailRefreshToken,
+  ]);
 
   useEffect(() => {
     if (activePanel !== "memory") {
@@ -973,7 +1032,8 @@ export function ThreadWorkbench({
         setUserMemoryCache((prev) => ({
           ...prev,
           [activeMemoryCacheKey]: {
-            status: data.exists === false && !data.memory_md ? "empty" : "success",
+            status:
+              data.exists === false && !data.memory_md ? "empty" : "success",
             data,
             error: null,
             updatedAt: Date.now(),
@@ -997,60 +1057,76 @@ export function ThreadWorkbench({
     return () => {
       cancelled = true;
     };
-  }, [activePanel, currentUserId, apiUrl, apiKey, authScheme, activeMemoryCacheKey, userMemoryRefreshToken]);
+  }, [
+    activePanel,
+    currentUserId,
+    apiUrl,
+    apiKey,
+    authScheme,
+    activeMemoryCacheKey,
+    userMemoryRefreshToken,
+  ]);
 
   if (!chatStarted) {
     return null;
   }
 
   const panelTitle =
-    activePanel === "state" ? "State" : activePanel === "skills" ? "Skills" : "Memory";
-  const panelSubtitle = threadId ? `Thread: ${threadId}` : "当前会话还没有稳定 thread_id";
-  const activeMemoryState = userMemoryCache[activeMemoryCacheKey] ?? EMPTY_USER_MEMORY;
+    activePanel === "state"
+      ? "State"
+      : activePanel === "skills"
+        ? "Skills"
+        : "Memory";
+  const panelSubtitle = threadId
+    ? `Thread: ${threadId}`
+    : "当前会话还没有稳定 thread_id";
+  const activeMemoryState =
+    userMemoryCache[activeMemoryCacheKey] ?? EMPTY_USER_MEMORY;
 
-  const panelContent = activePanel === "state" ? (
-    <StatePanel
-      activeTab={activeStateTab}
-      onTabChange={setActiveStateTab}
-      threadState={threadState}
-      threadId={threadId}
-      stateCache={stateCache}
-      onRefresh={(_tab) => {
-        setStateRefreshToken((prev) => prev + 1);
-      }}
-    />
-  ) : activePanel === "skills" ? (
-    <SkillsPanel
-      activeTab={activeSkillsTab}
-      onTabChange={setActiveSkillsTab}
-      listCache={skillsListCache}
-      detailCache={skillDetailCache}
-      selectedSkillPathByTab={selectedSkillPathByTab}
-      onSelectSkill={(tab, path) => {
-        setSelectedSkillPathByTab((prev) => ({
-          ...prev,
-          [tab]: path,
-        }));
-      }}
-      onRefreshList={(_tab) => {
-        setSkillsListRefreshToken((prev) => prev + 1);
-      }}
-      onRefreshDetail={(_path) => {
-        setSkillDetailRefreshToken((prev) => prev + 1);
-      }}
-      threadId={threadId}
-    />
-  ) : activePanel === "memory" ? (
-    <MemoryPanel
-      currentUserIdDraft={currentUserIdDraft}
-      onCurrentUserIdDraftChange={setCurrentUserIdDraft}
-      currentUserId={currentUserId}
-      memoryState={activeMemoryState}
-      onRefresh={() => {
-        setUserMemoryRefreshToken((prev) => prev + 1);
-      }}
-    />
-  ) : null;
+  const panelContent =
+    activePanel === "state" ? (
+      <StatePanel
+        activeTab={activeStateTab}
+        onTabChange={setActiveStateTab}
+        threadState={threadState}
+        threadId={threadId}
+        stateCache={stateCache}
+        onRefresh={(_tab) => {
+          setStateRefreshToken((prev) => prev + 1);
+        }}
+      />
+    ) : activePanel === "skills" ? (
+      <SkillsPanel
+        activeTab={activeSkillsTab}
+        onTabChange={setActiveSkillsTab}
+        listCache={skillsListCache}
+        detailCache={skillDetailCache}
+        selectedSkillPathByTab={selectedSkillPathByTab}
+        onSelectSkill={(tab, path) => {
+          setSelectedSkillPathByTab((prev) => ({
+            ...prev,
+            [tab]: path,
+          }));
+        }}
+        onRefreshList={(_tab) => {
+          setSkillsListRefreshToken((prev) => prev + 1);
+        }}
+        onRefreshDetail={(_path) => {
+          setSkillDetailRefreshToken((prev) => prev + 1);
+        }}
+        threadId={threadId}
+      />
+    ) : activePanel === "memory" ? (
+      <MemoryPanel
+        currentUserIdDraft={currentUserIdDraft}
+        onCurrentUserIdDraftChange={setCurrentUserIdDraft}
+        currentUserId={currentUserId}
+        memoryState={activeMemoryState}
+        onRefresh={() => {
+          setUserMemoryRefreshToken((prev) => prev + 1);
+        }}
+      />
+    ) : null;
 
   const togglePanel = (panel: WorkbenchPanelId) => {
     setActivePanel((prev) => (prev === panel ? null : panel));

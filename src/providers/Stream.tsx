@@ -25,6 +25,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { getApiKey } from "@/lib/api-key";
 import { createClient } from "@/providers/client";
 import { useThreads } from "./Thread";
+import { useRuntimeConfig } from "./runtime-config";
 import { toast } from "sonner";
 import { getVisibleAssistants } from "@/lib/assistant-options";
 import {
@@ -109,6 +110,8 @@ function logThinkingUiEvent(
  */
 type ConfigContextType = {
   apiUrl: string;
+  environmentId: string;
+  environmentName: string;
   setApiUrl: (url: string) => void;
   assistantId: string;
   setAssistantId: (id: string) => void;
@@ -381,6 +384,7 @@ function AssistantGate({
 
   return (
     <StreamSession
+      key={`${apiUrl}|${assistantId}`}
       apiKey={apiKey}
       apiUrl={apiUrl}
       assistantId={assistantId}
@@ -398,20 +402,22 @@ const AGENT_BUILDER_AUTH_SCHEME = "langsmith-api-key";
 export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
+  const runtime = useRuntimeConfig();
   const envApiUrl: string | undefined = process.env.NEXT_PUBLIC_API_URL;
   const envAssistantId: string | undefined =
     process.env.NEXT_PUBLIC_ASSISTANT_ID;
   const envAuthScheme: string | undefined = process.env.NEXT_PUBLIC_AUTH_SCHEME;
 
-  const [apiUrl, setApiUrl] = useQueryState("apiUrl", {
+  const [queryApiUrl, setQueryApiUrl] = useQueryState("apiUrl", {
     defaultValue: envApiUrl || "",
   });
-  const [assistantId, setAssistantId] = useQueryState("assistantId", {
+  const [queryAssistantId, setQueryAssistantId] = useQueryState("assistantId", {
     defaultValue: envAssistantId || "",
   });
-  const [authScheme, setAuthScheme] = useQueryState("authScheme", {
+  const [queryAuthScheme, setQueryAuthScheme] = useQueryState("authScheme", {
     defaultValue: envAuthScheme || "",
   });
+  const [, setConfigThreadId] = useQueryState("threadId");
 
   /**
    * showConfig flag: when "true", the deployment URL form is shown even if
@@ -423,25 +429,50 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   const [showConfig, setShowConfig] = useQueryState("showConfig", {
     defaultValue: "",
   });
+  const [desktopShowConfig, setDesktopShowConfig] = useState(false);
+  const [desktopFormEnvironmentId, setDesktopFormEnvironmentId] = useState(
+    runtime.environmentId,
+  );
   const [isAgentBuilder, setIsAgentBuilder] = useState(
     () =>
-      (authScheme || envAuthScheme || "").toLowerCase() ===
+      (queryAuthScheme || envAuthScheme || "").toLowerCase() ===
       AGENT_BUILDER_AUTH_SCHEME,
   );
 
-  const [apiKey, _setApiKey] = useState(() => {
+  const [webApiKey, _setApiKey] = useState(() => {
     const storedKey = getApiKey();
     return storedKey || "";
   });
 
-  const setApiKey = (key: string) => {
+  const setWebApiKey = (key: string) => {
     window.localStorage.setItem("lg:chat:apiKey", key);
     _setApiKey(key);
   };
 
-  const finalApiUrl = apiUrl || envApiUrl;
-  const finalAssistantId = assistantId || envAssistantId;
-  const finalAuthScheme = authScheme || envAuthScheme || "";
+  const apiUrl = runtime.isElectron ? runtime.apiUrl : queryApiUrl;
+  const assistantId = runtime.isElectron
+    ? runtime.assistantId
+    : queryAssistantId;
+  const authScheme = runtime.isElectron ? runtime.authScheme : queryAuthScheme;
+  const apiKey = runtime.isElectron ? runtime.apiKey : webApiKey;
+  const setApiUrl = runtime.isElectron ? runtime.setApiUrl : setQueryApiUrl;
+  const setAssistantId = runtime.isElectron
+    ? runtime.setAssistantId
+    : setQueryAssistantId;
+  const setAuthScheme = runtime.isElectron
+    ? runtime.setAuthScheme
+    : setQueryAuthScheme;
+  const setApiKey = runtime.isElectron ? runtime.setApiKey : setWebApiKey;
+  const finalApiUrl = runtime.isElectron ? runtime.apiUrl : apiUrl || envApiUrl;
+  const finalAssistantId = runtime.isElectron
+    ? runtime.assistantId
+    : assistantId || envAssistantId || "";
+  const finalAuthScheme = runtime.isElectron
+    ? runtime.authScheme
+    : authScheme || envAuthScheme || "";
+  const effectiveShowConfig = runtime.isElectron
+    ? desktopShowConfig
+    : showConfig === "true";
 
   /**
    * Show the form when:
@@ -451,8 +482,22 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
    * assistantId is no longer required in the form — it's auto-selected
    * from the server by AssistantGate after entering the URL.
    */
-  const showConfigForm = showConfig === "true" || !finalApiUrl;
-  const isConfigOverlay = showConfig === "true" && !!finalApiUrl;
+  const showConfigForm = effectiveShowConfig || !finalApiUrl;
+  const isConfigOverlay = effectiveShowConfig && !!finalApiUrl;
+  const desktopFormApiUrl = runtime.environments.find(
+    (environment) => environment.id === desktopFormEnvironmentId,
+  )?.apiUrl;
+
+  useEffect(() => {
+    if (runtime.isElectron) setDesktopFormEnvironmentId(runtime.environmentId);
+  }, [runtime.environmentId, runtime.isElectron]);
+  useEffect(() => {
+    if (runtime.isElectron) {
+      setIsAgentBuilder(
+        runtime.authScheme.toLowerCase() === AGENT_BUILDER_AUTH_SCHEME,
+      );
+    }
+  }, [runtime.authScheme, runtime.isElectron]);
 
   const [formError, setFormError] = useState<string | null>(null);
   const [formLoading, setFormLoading] = useState(false);
@@ -528,10 +573,23 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
                 }
 
                 // All good, proceed
-                setApiUrl(newApiUrl);
+                // Save global credentials before selecting the environment.
+                // RuntimeConfig updates are synchronous, but each setter is
+                // created from the current render snapshot; selecting first
+                // would be overwritten by the following credential updates.
                 setApiKey(newApiKey);
                 setAuthScheme(newAuthScheme);
-                setShowConfig("");
+                if (runtime.isElectron) {
+                  runtime.selectEnvironment(
+                    desktopFormEnvironmentId,
+                    newApiUrl,
+                  );
+                  void setConfigThreadId(null);
+                } else {
+                  setApiUrl(newApiUrl);
+                }
+                if (runtime.isElectron) setDesktopShowConfig(false);
+                else setShowConfig("");
 
                 form.reset();
               } catch (err) {
@@ -549,6 +607,28 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
                 {formError}
               </div>
             )}
+            {runtime.isElectron && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="runtimeEnvironment">Environment</Label>
+                <select
+                  id="runtimeEnvironment"
+                  value={desktopFormEnvironmentId}
+                  onChange={(event) =>
+                    setDesktopFormEnvironmentId(event.target.value)
+                  }
+                  className="bg-background h-10 rounded-md border px-3 text-sm"
+                >
+                  {runtime.environments.map((environment) => (
+                    <option
+                      key={environment.id}
+                      value={environment.id}
+                    >
+                      {environment.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex flex-col gap-2">
               <Label htmlFor="apiUrl">
                 Deployment URL<span className="text-rose-500">*</span>
@@ -561,7 +641,14 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
                 id="apiUrl"
                 name="apiUrl"
                 className="bg-background"
-                defaultValue={apiUrl || DEFAULT_API_URL}
+                key={
+                  runtime.isElectron ? desktopFormEnvironmentId : "web-api-url"
+                }
+                defaultValue={
+                  runtime.isElectron
+                    ? desktopFormApiUrl
+                    : apiUrl || DEFAULT_API_URL
+                }
                 required
               />
             </div>
@@ -575,9 +662,10 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
               <Label htmlFor="apiKey">LangSmith API Key</Label>
               <p className="text-muted-foreground text-sm">
                 This is <strong>NOT</strong> required if using a local LangGraph
-                server. This value is stored in your browser's local storage and
-                is only used to authenticate requests sent to your LangGraph
-                server.
+                server.{" "}
+                {runtime.isElectron
+                  ? "This value is stored in desktop app settings and is only used to authenticate requests sent to your LangGraph server."
+                  : "This value is stored in your browser's local storage and is only used to authenticate requests sent to your LangGraph server."}
               </p>
               <PasswordInput
                 id="apiKey"
@@ -612,7 +700,10 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
                   type="button"
                   variant="outline"
                   size="lg"
-                  onClick={() => setShowConfig("")}
+                  onClick={() => {
+                    if (runtime.isElectron) setDesktopShowConfig(false);
+                    else void setShowConfig("");
+                  }}
                 >
                   Cancel
                 </Button>
@@ -647,16 +738,25 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   }
 
   const configContextValue: ConfigContextType = {
-    apiUrl: apiUrl || "",
+    apiUrl: finalApiUrl,
+    environmentId: runtime.isElectron ? runtime.environmentId : "web",
+    environmentName: runtime.isElectron
+      ? (runtime.environments.find(
+          (environment) => environment.id === runtime.environmentId,
+        )?.name ?? runtime.environmentId)
+      : "Web",
     setApiUrl,
-    assistantId: assistantId || "",
+    assistantId: finalAssistantId,
     setAssistantId,
     apiKey,
     setApiKey,
-    authScheme: authScheme || "",
+    authScheme: finalAuthScheme,
     setAuthScheme,
-    showConfig: showConfig === "true",
-    setShowConfig: (show: boolean) => setShowConfig(show ? "true" : ""),
+    showConfig: effectiveShowConfig,
+    setShowConfig: (show: boolean) => {
+      if (runtime.isElectron) setDesktopShowConfig(show);
+      else void setShowConfig(show ? "true" : "");
+    },
   };
 
   return (

@@ -15,6 +15,9 @@ export type ParamsProfile = {
   configurableText: string;
   inputText: string;
   updatedAt: string;
+  /** Environment this built-in profile is associated with. */
+  environmentId?: string;
+  builtIn?: boolean;
 };
 
 export type ParamsProfileStore = {
@@ -22,6 +25,62 @@ export type ParamsProfileStore = {
   activeProfileId: string;
   profiles: ParamsProfile[];
 };
+
+const BUILTIN_PROFILE_UPDATED_AT = "2026-08-27T00:00:00.000Z";
+
+export const BUILTIN_PARAMS_PROFILES: readonly ParamsProfile[] = [
+  {
+    id: "builtin-parameters-local",
+    name: "local",
+    environmentId: "local",
+    builtIn: true,
+    configurableText: "",
+    inputText: JSON.stringify(
+      {
+        phone: "18618190062",
+        contract_no: "3100022710",
+        current_user_id: "26607976",
+      },
+      null,
+      2,
+    ),
+    updatedAt: BUILTIN_PROFILE_UPDATED_AT,
+  },
+  {
+    id: "builtin-parameters-si",
+    name: "si",
+    environmentId: "si",
+    builtIn: true,
+    configurableText: "",
+    inputText: JSON.stringify(
+      {
+        phone: "18618190062",
+        contract_no: "3100022710",
+        current_user_id: "26607976",
+      },
+      null,
+      2,
+    ),
+    updatedAt: BUILTIN_PROFILE_UPDATED_AT,
+  },
+  {
+    id: "builtin-parameters-st",
+    name: "st",
+    environmentId: "st",
+    builtIn: true,
+    configurableText: "",
+    inputText: JSON.stringify(
+      {
+        phone: "18618190062",
+        contract_no: "3200090219",
+        current_user_id: "2494996",
+      },
+      null,
+      2,
+    ),
+    updatedAt: BUILTIN_PROFILE_UPDATED_AT,
+  },
+];
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -184,6 +243,8 @@ export function createParamsProfile(args: {
   configurableText?: string;
   inputText?: string;
   updatedAt: string;
+  environmentId?: string;
+  builtIn?: boolean;
 }): ParamsProfile {
   return {
     id: args.id,
@@ -191,7 +252,41 @@ export function createParamsProfile(args: {
     configurableText: args.configurableText ?? "",
     inputText: args.inputText ?? "",
     updatedAt: args.updatedAt,
+    ...(args.environmentId ? { environmentId: args.environmentId } : {}),
+    ...(args.builtIn ? { builtIn: true } : {}),
   };
+}
+
+export function addBuiltInParamsProfiles(
+  store: ParamsProfileStore,
+): ParamsProfileStore {
+  const builtInIds = new Set(
+    BUILTIN_PARAMS_PROFILES.map((profile) => profile.id),
+  );
+  const existingBuiltIns = new Map(
+    store.profiles
+      .filter((profile) => builtInIds.has(profile.id))
+      .map((profile) => [profile.id, profile]),
+  );
+  const builtIns = BUILTIN_PARAMS_PROFILES.map(
+    (profile) => existingBuiltIns.get(profile.id) ?? profile,
+  );
+  const customProfiles = store.profiles.filter(
+    (profile) => !builtInIds.has(profile.id),
+  );
+  return {
+    ...store,
+    profiles: [...builtIns, ...customProfiles],
+  };
+}
+
+export function getParamsProfileForEnvironment(
+  store: ParamsProfileStore,
+  environmentId: string,
+): ParamsProfile | undefined {
+  return store.profiles.find(
+    (profile) => profile.builtIn && profile.environmentId === environmentId,
+  );
 }
 
 export function createParamsProfileStore(

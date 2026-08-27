@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { useQueryState } from "nuqs";
 import { constructOpenInStudioURL, buildDecisionFromState } from "../utils";
 import { Decision, HITLRequest, DecisionType, ActionRequest } from "../types";
-import { useStreamContext } from "@/providers/Stream";
+import { useConfigContext, useStreamContext } from "@/providers/Stream";
 import { withLegacyFamilyAgentStreamOptions } from "@/providers/legacy-familyagent-stream-options";
 
 interface ThreadActionsViewProps {
@@ -89,7 +89,7 @@ export function ThreadActionsView({
 }: ThreadActionsViewProps) {
   const stream = useStreamContext();
   const [threadId] = useQueryState("threadId");
-  const [apiUrl] = useQueryState("apiUrl");
+  const { apiUrl } = useConfigContext();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [addressedActions, setAddressedActions] = useState<
     Map<number, Decision>

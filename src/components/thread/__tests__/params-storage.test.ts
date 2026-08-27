@@ -17,7 +17,50 @@ const {
   serializeParamsProfileStore,
   selectParamsProfile,
   updateActiveParamsProfile,
+  addBuiltInParamsProfiles,
+  getParamsProfileForEnvironment,
 } = await import(new URL("../params-storage.ts", import.meta.url).href);
+
+test("built-in parameter profiles contain the environment-specific inputs", () => {
+  const store = addBuiltInParamsProfiles(
+    createParamsProfileStore(
+      createParamsProfile({
+        id: "custom",
+        name: "custom",
+        updatedAt: "2026-08-27T00:00:00.000Z",
+      }),
+    ),
+  );
+
+  assert.deepEqual(
+    getParamsProfileForEnvironment(store, "local")?.inputText,
+    `{
+  "phone": "18618190062",
+  "contract_no": "3100022710",
+  "current_user_id": "26607976"
+}`,
+  );
+  assert.deepEqual(
+    getParamsProfileForEnvironment(store, "si")?.inputText,
+    `{
+  "phone": "18618190062",
+  "contract_no": "3100022710",
+  "current_user_id": "26607976"
+}`,
+  );
+  assert.deepEqual(
+    getParamsProfileForEnvironment(store, "st")?.inputText,
+    `{
+  "phone": "18618190062",
+  "contract_no": "3200090219",
+  "current_user_id": "2494996"
+}`,
+  );
+  assert.equal(
+    store.profiles.some((profile: { id: string }) => profile.id === "custom"),
+    true,
+  );
+});
 
 test("buildStoredParamsDraft keeps raw text and parsed values together", () => {
   const draft = buildStoredParamsDraft({

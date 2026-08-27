@@ -2,10 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 const thinkingTraceCardSource = await import("node:fs/promises").then((fs) =>
-  fs.readFile(
-    new URL("../thinking-trace-card.tsx", import.meta.url),
-    "utf8",
-  ),
+  fs.readFile(new URL("../thinking-trace-card.tsx", import.meta.url), "utf8"),
 );
 
 const threadStateSheetSource = await import("node:fs/promises").then((fs) =>
@@ -16,10 +13,7 @@ const threadStateSheetSource = await import("node:fs/promises").then((fs) =>
 );
 
 const threadIndexSource = await import("node:fs/promises").then((fs) =>
-  fs.readFile(
-    new URL("../index.tsx", import.meta.url),
-    "utf8",
-  ),
+  fs.readFile(new URL("../index.tsx", import.meta.url), "utf8"),
 );
 
 test("thinking trace header keeps runtime and telemetry but no longer includes thread state", () => {
@@ -39,8 +33,12 @@ test("thread state dialog is wider and resizable", () => {
   );
 });
 
-test("thread state uses the shared code viewer for raw json", () => {
-  assert.match(threadStateSheetSource, /<SyntaxHighlighter/);
-  assert.match(threadStateSheetSource, /showLineNumbers/);
+test("thread state uses the collapsible dark JSON viewer", () => {
+  assert.match(threadStateSheetSource, /<JsonView/);
+  assert.match(
+    threadStateSheetSource,
+    /shouldExpandNode=\{collapseAllNested\}/,
+  );
+  assert.match(threadStateSheetSource, /\.\.\.darkStyles/);
   assert.match(threadStateSheetSource, /Current State JSON/);
 });
