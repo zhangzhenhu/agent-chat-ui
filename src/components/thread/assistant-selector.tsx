@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import {
   getAssistantDisplayName,
   getVisibleAssistants,
+  searchAllAssistants,
 } from "@/lib/assistant-options";
 
 export function AssistantSelector() {
@@ -42,32 +43,43 @@ export function AssistantSelector() {
 
   /**
    * Fetch assistants from the server whenever the connection parameters change.
-   *
-   * Note: we intentionally do NOT include assistantId in the dependency array
-   * because we only want to re-fetch when the server URL/key changes, not when
-   * the user switches assistants (which would cause an unnecessary re-fetch).
+   * The selected ID is also observed so a stale URL/query selection can be
+   * reconciled after the authoritative runtime graph catalog is loaded.
    */
   useEffect(() => {
     if (!apiUrl) return;
     setLoading(true);
-    const client = createClient(apiUrl, apiKey || undefined, authScheme || undefined);
-    client.assistants
-      .search({ limit: 100 })
+    const client = createClient(
+      apiUrl,
+      apiKey || undefined,
+      authScheme || undefined,
+    );
+    searchAllAssistants((query) =>
+      client.assistants.search({ ...query, includePagination: true }),
+    )
       .then((result) => {
         const list = getVisibleAssistants(result);
         setAssistants(list);
-        // Auto-select first assistant if none is selected yet.
-        // This handles the case where the user enters via env vars or a direct
-        // URL without an assistantId, and the AssistantGate hasn't picked one yet.
-        if (!assistantId && list.length > 0) {
-          setAssistantId(list[0].assistant_id);
+        const selected = list.find(
+          (assistant) =>
+            assistant.graph_id === assistantId ||
+            assistant.assistant_id === assistantId,
+        );
+        // The URL may contain a legacy assistant UUID. Normalize it to the
+        // graph ID so all subsequent requests use the langgraph.json key.
+        if (list.length > 0 && selected && selected.graph_id !== assistantId) {
+          setAssistantId(selected.graph_id);
+          setThreadId(null);
+        } else if (list.length > 0 && !selected) {
+          setAssistantId(list[0].graph_id);
+          setThreadId(null);
         }
       })
       .catch((err) => {
         console.error("Failed to fetch assistants:", err);
       })
       .finally(() => setLoading(false));
-  }, [apiUrl, apiKey, authScheme, assistantId, setAssistantId]);
+  }, [apiUrl, apiKey, assistantId, authScheme, setAssistantId, setThreadId]);
 
   // Close the dropdown when clicking outside
   useEffect(() => {
@@ -85,7 +97,7 @@ export function AssistantSelector() {
   }, [open]);
 
   const currentAssistant = assistants.find(
-    (a) => a.assistant_id === assistantId,
+    (a) => a.assistant_id === assistantId || a.graph_id === assistantId,
   );
   const displayName =
     getAssistantDisplayName(currentAssistant) ||
@@ -93,56 +105,61 @@ export function AssistantSelector() {
     "Select assistant";
 
   const handleSelect = (assistant: Assistant) => {
-    setAssistantId(assistant.assistant_id);
+    setAssistantId(assistant.graph_id);
     setThreadId(null); // Start a new thread when switching assistants
     setOpen(false);
   };
 
   if (loading) {
     return (
-      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+      <div className="text-muted-foreground flex items-center gap-1.5 text-sm">
         <Loader2 className="size-3.5 animate-spin" />
-        <span className="truncate max-w-[120px]">{displayName}</span>
+        <span className="max-w-[120px] truncate">{displayName}</span>
       </div>
     );
   }
 
   if (assistants.length === 0) {
     return (
-      <span className="text-sm text-muted-foreground truncate max-w-[150px]">
+      <span className="text-muted-foreground max-w-[150px] truncate text-sm">
         {displayName}
       </span>
     );
   }
 
   return (
-    <div ref={containerRef} className="relative">
+    <div
+      ref={containerRef}
+      className="relative"
+    >
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium hover:bg-gray-100 transition-colors max-w-[200px]"
+        className="flex max-w-[200px] items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium transition-colors hover:bg-gray-100"
       >
         <span className="truncate">{displayName}</span>
         <ChevronDown
           className={cn(
-            "size-3.5 shrink-0 text-muted-foreground transition-transform",
+            "text-muted-foreground size-3.5 shrink-0 transition-transform",
             open && "rotate-180",
           )}
         />
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-64 rounded-md border bg-white shadow-lg">
+        <div className="absolute top-full left-0 z-50 mt-1 w-64 rounded-md border bg-white shadow-lg">
           <div className="max-h-64 overflow-y-auto py-1">
             {assistants.map((assistant) => {
-              const isSelected = assistant.assistant_id === assistantId;
+              const isSelected =
+                assistant.assistant_id === assistantId ||
+                assistant.graph_id === assistantId;
               return (
                 <button
                   key={assistant.assistant_id}
                   type="button"
                   onClick={() => handleSelect(assistant)}
                   className={cn(
-                    "flex w-full items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-100 transition-colors",
+                    "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-gray-100",
                     isSelected && "bg-gray-50 font-medium",
                   )}
                 >

@@ -74,7 +74,7 @@ test("appendThinkingEvent keeps the first timestamp for canonical thinking.chunk
   assert.equal(group.items.length, 2);
 });
 
-test("appendThinkingEvent ignores thinking.phase_started (durable card already carries phase + title)", async () => {
+test("appendThinkingEvent stores phase_started title and status for realtime display", async () => {
   const { EMPTY_THINKING_STATE, appendThinkingEvent } = await import(
     new URL("../thinking-state.ts", import.meta.url).href
   );
@@ -93,8 +93,48 @@ test("appendThinkingEvent ignores thinking.phase_started (durable card already c
     },
   });
 
-  // phase_started 不再写入 state——避免 transient 兜底渲染闪英文标题。
-  assert.deepEqual(next, EMPTY_THINKING_STATE);
+  assert.equal(next.latestRunId, "run-1");
+  assert.deepEqual(next.byRunId["run-1"].phases.intent, {
+    groups: {},
+    facts: [],
+    title: "正在理解你的意图",
+    status: "active",
+  });
+  assert.equal(next.byRunId["run-1"].activePhaseId, "intent");
+});
+
+test("appendThinkingEvent ignores an out-of-order phase update", async () => {
+  const { EMPTY_THINKING_STATE, appendThinkingEvent } = await import(
+    new URL("../thinking-state.ts", import.meta.url).href
+  );
+
+  const current = appendThinkingEvent(EMPTY_THINKING_STATE, {
+    kind: "thinking",
+    event_name: "thinking.phase_started",
+    context: { run_id: "run-1" },
+    payload: {
+      phase_id: "need_specialist",
+      title: "正在调用需智解析工具",
+      status: "active",
+      sequence: 4,
+    },
+  });
+  const stale = appendThinkingEvent(current, {
+    kind: "thinking",
+    event_name: "thinking.phase_updated",
+    context: { run_id: "run-1" },
+    payload: {
+      phase_id: "need_specialist",
+      title: "旧标题",
+      status: "active",
+      sequence: 3,
+    },
+  });
+
+  assert.equal(
+    stale.byRunId["run-1"].phases.need_specialist.title,
+    "正在调用需智解析工具",
+  );
 });
 
 test("appendThinkingEvent marks all run phases flushed when the run-level thinking.completed arrives", async () => {

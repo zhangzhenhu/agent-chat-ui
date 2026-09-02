@@ -27,7 +27,10 @@ import { createClient } from "@/providers/client";
 import { useThreads } from "./Thread";
 import { useRuntimeConfig } from "./runtime-config";
 import { toast } from "sonner";
-import { getVisibleAssistants } from "@/lib/assistant-options";
+import {
+  getVisibleAssistants,
+  searchAllAssistants,
+} from "@/lib/assistant-options";
 import {
   appendAnalyticsEvent,
   EMPTY_ANALYTICS_STATE,
@@ -224,11 +227,14 @@ const StreamSession = ({
         const eventName = (event as { event_name?: string }).event_name ?? "";
         // thinking.entry_added/entry_updated 是后台实时更新机制（如“正在调用 xxx 能力/工具”），
         // 不管 root 还是 child 都要收，用于实时刷新思考卡。
-        // 其他 thinking 事件（reasoning_delta/phase_started/completed）按“只收 root”
-        // 规则过滤 child——避免把 child specialist 的原始思考流暴露给用户主卡。
+        // phase_started/updated 只携带阶段标题和状态，child 也必须接收，才能在
+        // durable root snapshot 更新前显示 specialist 当前阶段；reasoning/completed
+        // 仍按“只收 root”规则过滤，避免暴露 child specialist 原始思考流。
         const isAlwaysAccept =
           eventName === "thinking.entry_added" ||
-          eventName === "thinking.entry_updated";
+          eventName === "thinking.entry_updated" ||
+          eventName === "thinking.phase_started" ||
+          eventName === "thinking.phase_updated";
         if (
           !isAlwaysAccept &&
           !shouldAcceptThinkingNamespace(options.namespace)
@@ -334,12 +340,13 @@ function AssistantGate({
       apiKey || undefined,
       authScheme || undefined,
     );
-    client.assistants
-      .search({ limit: 100 })
+    searchAllAssistants((query) =>
+      client.assistants.search({ ...query, includePagination: true }),
+    )
       .then((result) => {
         const list = getVisibleAssistants(result);
         if (list.length > 0) {
-          setAssistantId(list[0].assistant_id);
+          setAssistantId(list[0].graph_id);
         } else {
           setError(
             "No assistants found on this server. Please create one first.",
@@ -562,7 +569,12 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
                   newApiKey || undefined,
                   newAuthScheme || undefined,
                 );
-                const assistants = await client.assistants.search({ limit: 1 });
+                const assistants = await searchAllAssistants((query) =>
+                  client.assistants.search({
+                    ...query,
+                    includePagination: true,
+                  }),
+                );
                 const list = getVisibleAssistants(assistants);
                 if (list.length === 0) {
                   setFormError(

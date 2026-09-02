@@ -46,16 +46,13 @@ function mergeDurableSnapshotWithTransientBuckets(args: {
     if (existingIds.has(phaseId)) {
       continue;
     }
-    // transient-only phase（durable 卡还没覆盖到这一阶段）的 title 留空串。
-    //
-    // 新协议（frontend-06-thinking-sse-raw-guide.md）下阶段标题只认 durable
-    // 卡的 `steps[].title`；这里不硬编码任何 phase 文案，也不再回退英文
-    // phase_id——后者正是用户反馈的“阶段名称一段时间变成英文”的根因。
-    // durable 帧到达后该 phase 会被中文 title 覆盖。
+    // transient-only phase（durable 卡还没覆盖到这一阶段）使用 phase 事件携带的
+    // 后端中文标题，durable 帧到达后再由
+    // durable step 覆盖同一 phase，避免标题短暂缺失或回退为 phase_id。
     mergedSteps.push({
       id: phaseId,
-      title: "",
-      status: phaseId === transientPhaseIds[transientPhaseIds.length - 1] ? "active" : "completed",
+      title: transientRunBucket?.phases[phaseId]?.title || "",
+      status: transientRunBucket?.phases[phaseId]?.status || "active",
       // 这里给 transient-only phase 构造一份与 durable 协议同形的壳。
       // 目的不是把 transient bucket durable 化，而是让 display 层统一按 `entries[]` 理解数据。
       entries: buildTransientDetailGroups(transientRunBucket, phaseId),
@@ -71,7 +68,14 @@ function mergeDurableSnapshotWithTransientBuckets(args: {
     // - specialist bucket 可能晚于 durable 收口一小段时间才清掉；
     // - 如果这里总是偏向 transient 最新 phase，就会出现
     //   `need_confirmation` 被打回 `need_specialist` 的阶段闪回。
-    current_phase_id: durableSnapshot.current_phase_id || "",
+    current_phase_id:
+      durableSnapshot.steps?.find(
+        (step) => step.id === durableSnapshot.current_phase_id,
+      )?.status === "active" &&
+      transientRunBucket?.activePhaseId &&
+      !existingIds.has(transientRunBucket.activePhaseId)
+        ? transientRunBucket.activePhaseId
+        : durableSnapshot.current_phase_id || "",
     steps: mergedSteps,
   };
 }

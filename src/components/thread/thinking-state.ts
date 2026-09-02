@@ -1,6 +1,7 @@
 import type {
   ThinkingEventEnvelope,
   ThinkingFactEntry,
+  ThinkingTraceStep,
 } from "./analytics-types";
 
 export type ThinkingDeltaItem = {
@@ -22,10 +23,16 @@ export type ThinkingPhaseBucket = {
   // 按 entry_id 去重，保留到达顺序。durable 帧到达后，view-model 的
   // buildRenderedFacts 会按 entry_id 与 durable fact 去重合并，避免重复。
   facts: ThinkingFactEntry[];
+  // phase_started/updated 在 durable 卡到达前提供实时阶段标题和状态。
+  title?: string;
+  status?: ThinkingTraceStep["status"];
+  sequence?: number;
 };
 
 export type ThinkingRunBucket = {
   phases: Record<string, ThinkingPhaseBucket>;
+  activePhaseId?: string;
+  activePhaseSequence?: number;
 };
 
 export type ThinkingState = {
@@ -64,6 +71,31 @@ function getText(event: ThinkingEventEnvelope): string {
 
 function getEntryCreatedAt(event: ThinkingEventEnvelope): string {
   return normalizeString(event.payload?.entry_created_at);
+}
+
+function getPhaseTitle(event: ThinkingEventEnvelope): string {
+  const payload = event.payload;
+  return (
+    normalizeString(payload?.title) || normalizeString(payload?.default_title)
+  );
+}
+
+function getPhaseStatus(
+  event: ThinkingEventEnvelope,
+): ThinkingTraceStep["status"] {
+  const status = normalizeString(event.payload?.status);
+  return ["pending", "active", "completed", "waiting_user", "failed"].includes(
+    status,
+  )
+    ? (status as ThinkingTraceStep["status"])
+    : "active";
+}
+
+function getSequence(event: ThinkingEventEnvelope): number | undefined {
+  const sequence = event.payload?.sequence;
+  return typeof sequence === "number" && Number.isFinite(sequence)
+    ? sequence
+    : undefined;
 }
 
 // 新协议（frontend-06-thinking-sse-raw-guide.md 第 419/432 行）下，
@@ -122,16 +154,55 @@ export function appendThinkingEvent(
   const runId = getRunId(event);
   const eventName = normalizeString(event.event_name);
 
-  // thinking.phase_started 在新协议里是“非必须、可忽略”的实时增强信号
-  // （frontend-06 第 154/386 行）。它的 phase_id 对前端无价值——durable 卡
-  // 始终先到，已提供 phase + 中文 title。前端一旦把它写进 state，会在
-  // durable 帧未对齐时触发 transient 兜底渲染，正是阶段标题闪英文的根因。
-  // 因此这里直接丢弃，不创建 phase bucket。
-  if (eventName === "thinking.phase_started") {
-    return prev;
-  }
-
   const phaseId = getPhaseId(event);
+
+  // phase 事件是 specialist 进入新阶段时的实时提示。它可能先于 root durable
+  // snapshot 到达，因此必须保存标题和状态；sequence 用于丢弃乱序的旧事件。
+  if (
+    eventName === "thinking.phase_started" ||
+    eventName === "thinking.phase_updated"
+  ) {
+    if (!phaseId) {
+      return prev;
+    }
+    const runBucket = ensureRunBucket(prev, runId);
+    const phaseBucket = ensurePhaseBucket(runBucket, phaseId);
+    const sequence = getSequence(event);
+    if (
+      sequence !== undefined &&
+      phaseBucket.sequence !== undefined &&
+      sequence < phaseBucket.sequence
+    ) {
+      return prev;
+    }
+    const status = getPhaseStatus(event);
+    const title = getPhaseTitle(event) || phaseBucket.title;
+    const nextRunBucket: ThinkingRunBucket = {
+      ...runBucket,
+      phases: {
+        ...runBucket.phases,
+        [phaseId]: {
+          ...phaseBucket,
+          ...(title ? { title } : {}),
+          status,
+          ...(sequence !== undefined ? { sequence } : {}),
+        },
+      },
+    };
+    if (
+      status === "active" &&
+      (sequence === undefined ||
+        nextRunBucket.activePhaseSequence === undefined ||
+        sequence >= nextRunBucket.activePhaseSequence)
+    ) {
+      nextRunBucket.activePhaseId = phaseId;
+      nextRunBucket.activePhaseSequence = sequence;
+    }
+    return {
+      byRunId: { ...prev.byRunId, [runId]: nextRunBucket },
+      latestRunId: runId,
+    };
+  }
 
   // reasoning chunk 是唯一需要 phase + entry 粒度的文本增量事件。
   // thinking.completed 是 run 级收口，只需要 runId（见下方分支）。
@@ -292,6 +363,8 @@ export function appendThinkingEvent(
         ...prev.byRunId,
         [runId]: {
           phases: nextPhases,
+          activePhaseId: runBucket.activePhaseId,
+          activePhaseSequence: runBucket.activePhaseSequence,
         },
       },
       latestRunId: runId,

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 const { resolveThinkingTraceDisplay } = await import(
-  new URL("../thinking-trace-display.ts", import.meta.url).href,
+  new URL("../thinking-trace-display.ts", import.meta.url).href
 );
 import type { ThinkingTraceStep } from "../analytics-types";
 
@@ -264,4 +264,50 @@ test("resolveThinkingTraceDisplay keeps the durable current phase when the same 
       text: "正在查看个人画像，梳理当前用户的偏好与约束。已检索到画像：用户标签（用户年龄段：老年）",
     },
   ]);
+});
+
+test("resolveThinkingTraceDisplay shows a child phase title before durable snapshot catches up", () => {
+  const resolved = resolveThinkingTraceDisplay({
+    durable: {
+      runId: "run-1",
+      snapshot: {
+        status: "active",
+        current_phase_id: "intent",
+        steps: [
+          {
+            id: "intent",
+            title: "正在了解你的需求",
+            status: "active",
+            entries: [],
+          },
+        ],
+      },
+    },
+    thinkingState: {
+      latestRunId: "run-1",
+      byRunId: {
+        "run-1": {
+          activePhaseId: "need_specialist",
+          activePhaseSequence: 2,
+          phases: {
+            need_specialist: {
+              title: "正在调用需智解析工具",
+              status: "active",
+              sequence: 2,
+              groups: {},
+              facts: [],
+            },
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(resolved.snapshot?.current_phase_id, "need_specialist");
+  assert.deepEqual(resolved.snapshot?.steps?.[1], {
+    id: "need_specialist",
+    title: "正在调用需智解析工具",
+    status: "active",
+    entries: [],
+  });
 });
