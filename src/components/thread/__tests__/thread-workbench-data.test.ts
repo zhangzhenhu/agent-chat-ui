@@ -3,30 +3,68 @@ import assert from "node:assert/strict";
 
 const {
   buildChildStateUrl,
+  fetchChildThreadState,
   buildSkillsListUrl,
   buildSkillFileUrl,
   buildUserMemoryUrl,
 } = await import(new URL("../thread-workbench-data.ts", import.meta.url).href);
 
-test("buildChildStateUrl appends debug child-state under the configured api base", () => {
+test("fetchChildThreadState requests the latest checkpoint snapshot", async () => {
+  const originalFetch = globalThis.fetch;
+  let request: Request | undefined;
+  globalThis.fetch = async (input, init) => {
+    request = new Request(input, init);
+    return new Response(JSON.stringify({ values: { messages: [] } }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  try {
+    await fetchChildThreadState({
+      apiUrl: "https://sidemandintel.ecej.com/api",
+      threadId: "thread-1",
+      checkpointNs: "specialist__food_need_specialist",
+      apiKey: "key-1",
+      authScheme: "internal",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.ok(request);
+  assert.equal(request.method, "POST");
+  assert.equal(request.headers.get("Content-Type"), "application/json");
+  assert.equal(request.headers.get("X-Api-Key"), "key-1");
+  assert.equal(request.headers.get("X-Auth-Scheme"), "internal");
+  assert.deepEqual(await request.json(), {
+    checkpoint: {
+      thread_id: "thread-1",
+      checkpoint_ns: "specialist__food_need_specialist",
+      checkpoint_id: "",
+      checkpoint_map: {},
+    },
+    subgraphs: true,
+  });
+});
+
+test("buildChildStateUrl targets the latest thread state checkpoint endpoint", () => {
   assert.equal(
     buildChildStateUrl({
       apiUrl: "https://sidemandintel.ecej.com/api",
-      specialist: "food_need",
       threadId: "thread-1",
     }),
-    "https://sidemandintel.ecej.com/api/debug/child-state?specialist=food_need&thread_id=thread-1",
+    "https://sidemandintel.ecej.com/api/threads/thread-1/state/checkpoint",
   );
 });
 
-test("buildChildStateUrl adds /api for deployments configured with the root runtime url", () => {
+test("buildChildStateUrl uses the root path for deployments configured with the root runtime url", () => {
   assert.equal(
     buildChildStateUrl({
       apiUrl: "https://sidemandintel.ecej.com",
-      specialist: "food_need",
       threadId: "thread-1",
     }),
-    "https://sidemandintel.ecej.com/api/debug/child-state?specialist=food_need&thread_id=thread-1",
+    "https://sidemandintel.ecej.com/threads/thread-1/state/checkpoint",
   );
 });
 

@@ -11,6 +11,16 @@ function buildDebugUrl(apiUrl: string, pathname: string): URL {
   );
 }
 
+function buildRuntimeUrl(apiUrl: string, pathname: string): URL {
+  const baseUrl = new URL(apiUrl);
+  const basePath = baseUrl.pathname.replace(/\/$/, "");
+
+  return new URL(
+    `${basePath}/${pathname}`.replace(/\/{2,}/g, "/"),
+    baseUrl.origin,
+  );
+}
+
 function buildDebugHeaders(args: {
   apiKey?: string | null;
   authScheme?: string | null;
@@ -27,16 +37,23 @@ function buildDebugHeaders(args: {
 
 async function fetchJson<T>(args: {
   url: string;
+  method?: "GET" | "POST";
+  body?: unknown;
   apiKey?: string | null;
   authScheme?: string | null;
   signal?: AbortSignal;
 }): Promise<T> {
+  const headers = buildDebugHeaders({
+    apiKey: args.apiKey,
+    authScheme: args.authScheme,
+  });
+  if (args.body !== undefined) {
+    headers.set("Content-Type", "application/json");
+  }
   const response = await fetch(args.url, {
-    method: "GET",
-    headers: buildDebugHeaders({
-      apiKey: args.apiKey,
-      authScheme: args.authScheme,
-    }),
+    method: args.method ?? "GET",
+    headers,
+    ...(args.body !== undefined && { body: JSON.stringify(args.body) }),
     signal: args.signal,
   });
 
@@ -49,15 +66,13 @@ async function fetchJson<T>(args: {
 }
 
 export type ChildThreadStateResponse = {
-  thread_id: string;
-  specialist: string;
-  resolved?: {
-    domain?: string;
-    role?: string;
-    agent_name?: string;
-    child_namespace?: string;
-    checkpoint_ns?: string;
-  };
+  values?: unknown;
+  next?: unknown;
+  tasks?: unknown;
+  interrupts?: unknown;
+  checkpoint?: unknown;
+  metadata?: unknown;
+  parent_checkpoint?: unknown;
   snapshot?: unknown;
 };
 
@@ -101,13 +116,12 @@ export type UserMemoryResponse = {
 
 export function buildChildStateUrl(args: {
   apiUrl: string;
-  specialist: string;
   threadId: string;
 }): string {
-  const url = buildDebugUrl(args.apiUrl, "debug/child-state");
-  url.searchParams.set("specialist", args.specialist);
-  url.searchParams.set("thread_id", args.threadId);
-  return url.toString();
+  return buildRuntimeUrl(
+    args.apiUrl,
+    `threads/${encodeURIComponent(args.threadId)}/state/checkpoint`,
+  ).toString();
 }
 
 export function buildSkillsListUrl(args: {
@@ -141,8 +155,8 @@ export function buildUserMemoryUrl(args: {
 
 export async function fetchChildThreadState(args: {
   apiUrl: string;
-  specialist: string;
   threadId: string;
+  checkpointNs: string;
   apiKey?: string | null;
   authScheme?: string | null;
   signal?: AbortSignal;
@@ -150,9 +164,18 @@ export async function fetchChildThreadState(args: {
   return fetchJson<ChildThreadStateResponse>({
     url: buildChildStateUrl({
       apiUrl: args.apiUrl,
-      specialist: args.specialist,
       threadId: args.threadId,
     }),
+    method: "POST",
+    body: {
+      checkpoint: {
+        thread_id: args.threadId,
+        checkpoint_ns: args.checkpointNs,
+        checkpoint_id: "",
+        checkpoint_map: {},
+      },
+      subgraphs: true,
+    },
     apiKey: args.apiKey,
     authScheme: args.authScheme,
     signal: args.signal,

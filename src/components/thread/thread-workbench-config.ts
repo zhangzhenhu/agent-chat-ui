@@ -40,11 +40,26 @@ const SPECIALIST_AGENT_NAMES = {
   gas_supply: "gas_supply_specialist",
 } as const;
 
+const SPECIALIST_CHECKPOINT_NAMESPACES = {
+  // V2 checkpoint namespaces are derived from the compiled specialist stage node name.
+  gas_need: "specialist__gas_need_specialist",
+  food_supply: "specialist__food_supply_specialist",
+  food_need: "specialist__food_need_specialist",
+  gas_supply: "specialist__gas_supply_specialist",
+} as const;
+
 export function getChildStateSpecialist(tab: StateTabId): string | null {
   if (tab === "main") {
     return null;
   }
   return tab;
+}
+
+export function getChildStateCheckpointNs(tab: StateTabId): string | null {
+  if (tab === "main") {
+    return null;
+  }
+  return SPECIALIST_CHECKPOINT_NAMESPACES[tab];
 }
 
 export function getSkillsAgentName(tab: SkillsTabId): string | null {

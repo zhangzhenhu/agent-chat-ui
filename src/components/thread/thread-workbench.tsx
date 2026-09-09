@@ -21,12 +21,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { collapseAllNested, darkStyles, JsonView } from "react-json-view-lite";
+import { allExpanded, darkStyles, JsonView } from "react-json-view-lite";
 
 import { MarkdownText } from "./markdown-text";
 import {
   buildWorkbenchCacheKey,
-  getChildStateSpecialist,
+  getChildStateCheckpointNs,
   getSkillsAgentName,
   SKILLS_TAB_LABELS,
   SKILLS_TABS,
@@ -195,7 +195,7 @@ function JsonViewport({ title, value }: { title: string; value: unknown }) {
         <JsonView
           aria-label={`${title} JSON`}
           data={jsonData}
-          shouldExpandNode={collapseAllNested}
+          shouldExpandNode={allExpanded}
           style={{
             ...darkStyles,
             childFieldsContainer: `${darkStyles.childFieldsContainer} ml-4`,
@@ -244,7 +244,7 @@ function StatePanel({
   stateCache: Record<string, ResourceState<ChildThreadStateResponse>>;
   onRefresh: (tab: StateTabId) => void;
 }) {
-  const specialist = getChildStateSpecialist(activeTab);
+  const checkpointNs = getChildStateCheckpointNs(activeTab);
   const stateKey = buildWorkbenchCacheKey({
     threadId,
     panel: "state",
@@ -259,7 +259,7 @@ function StatePanel({
     activeTab === "main"
       ? "Source: current stream.values"
       : threadId
-        ? `GET child-state specialist=${specialist} thread_id=${threadId}`
+        ? `POST /threads/${threadId}/state/checkpoint · ${checkpointNs}`
         : "当前还没有可查询的 thread_id";
   const jsonValue = activeTab === "main" ? threadState : cached.data;
 
@@ -746,8 +746,11 @@ export function ThreadWorkbench({
     }
     lastStateRequestRef.current = requestSignature;
 
-    const specialist = getChildStateSpecialist(activeStateTab);
-    if (!specialist) {
+    if (activeStateTab === "main") {
+      return;
+    }
+    const checkpointNs = getChildStateCheckpointNs(activeStateTab);
+    if (!checkpointNs) {
       return;
     }
 
@@ -780,8 +783,8 @@ export function ThreadWorkbench({
       apiUrl,
       apiKey,
       authScheme,
-      specialist,
       threadId,
+      checkpointNs,
     })
       .then((data) => {
         if (cancelled) return;

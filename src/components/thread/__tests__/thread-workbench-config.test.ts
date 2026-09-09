@@ -5,9 +5,12 @@ const {
   STATE_TABS,
   SKILLS_TABS,
   getChildStateSpecialist,
+  getChildStateCheckpointNs,
   getSkillsAgentName,
   buildWorkbenchCacheKey,
-} = await import(new URL("../thread-workbench-config.ts", import.meta.url).href);
+} = await import(
+  new URL("../thread-workbench-config.ts", import.meta.url).href
+);
 
 test("state tabs stay fixed in the approved specialist order", () => {
   assert.deepEqual(STATE_TABS, [
@@ -33,6 +36,26 @@ test("child state mapping skips main and passes through specialist ids", () => {
   assert.equal(getChildStateSpecialist("main"), null);
   assert.equal(getChildStateSpecialist("gas_need"), "gas_need");
   assert.equal(getChildStateSpecialist("food_supply"), "food_supply");
+});
+
+test("child state tabs map to the persisted V2 checkpoint namespaces", () => {
+  assert.equal(getChildStateCheckpointNs("main"), null);
+  assert.equal(
+    getChildStateCheckpointNs("food_need"),
+    "specialist__food_need_specialist",
+  );
+  assert.equal(
+    getChildStateCheckpointNs("food_supply"),
+    "specialist__food_supply_specialist",
+  );
+  assert.equal(
+    getChildStateCheckpointNs("gas_need"),
+    "specialist__gas_need_specialist",
+  );
+  assert.equal(
+    getChildStateCheckpointNs("gas_supply"),
+    "specialist__gas_supply_specialist",
+  );
 });
 
 test("skills mapping resolves specialist tabs to backend agent names", () => {

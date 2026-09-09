@@ -16,6 +16,10 @@ const threadIndexSource = await import("node:fs/promises").then((fs) =>
   fs.readFile(new URL("../index.tsx", import.meta.url), "utf8"),
 );
 
+const threadWorkbenchSource = await import("node:fs/promises").then((fs) =>
+  fs.readFile(new URL("../thread-workbench.tsx", import.meta.url), "utf8"),
+);
+
 test("thinking trace header keeps runtime and telemetry but no longer includes thread state", () => {
   assert.doesNotMatch(thinkingTraceCardSource, /<ThreadStateSheet/);
   assert.match(thinkingTraceCardSource, /<RuntimeTraceSheet/);
@@ -41,4 +45,9 @@ test("thread state uses the collapsible dark JSON viewer", () => {
   );
   assert.match(threadStateSheetSource, /\.\.\.darkStyles/);
   assert.match(threadStateSheetSource, /Current State JSON/);
+});
+
+test("thread workbench JSON viewer is expanded by default", () => {
+  assert.match(threadWorkbenchSource, /import \{ allExpanded/);
+  assert.match(threadWorkbenchSource, /shouldExpandNode=\{allExpanded\}/);
 });
