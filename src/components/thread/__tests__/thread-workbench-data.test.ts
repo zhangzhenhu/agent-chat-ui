@@ -3,11 +3,49 @@ import assert from "node:assert/strict";
 
 const {
   buildChildStateUrl,
+  buildRootStateUrl,
+  fetchRootThreadState,
   fetchChildThreadState,
   buildSkillsListUrl,
   buildSkillFileUrl,
   buildUserMemoryUrl,
 } = await import(new URL("../thread-workbench-data.ts", import.meta.url).href);
+
+test("fetchRootThreadState requests the root state endpoint", async () => {
+  const originalFetch = globalThis.fetch;
+  let request: Request | undefined;
+  globalThis.fetch = async (input, init) => {
+    request = new Request(input, init);
+    return new Response(JSON.stringify({ values: { status: "ok" } }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  try {
+    await fetchRootThreadState({
+      apiUrl: "https://demandintel.ecej.com",
+      threadId: "thread-1",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.ok(request);
+  assert.equal(request.method, "GET");
+  assert.equal(
+    request.url,
+    "https://demandintel.ecej.com/threads/thread-1/state/",
+  );
+});
+
+test("buildRootStateUrl preserves runtime base paths", () => {
+  assert.equal(
+    buildRootStateUrl({
+      apiUrl: "https://sidemandintel.ecej.com/api",
+      threadId: "thread-1",
+    }),
+    "https://sidemandintel.ecej.com/api/threads/thread-1/state/",
+  );
+});
 
 test("fetchChildThreadState requests the latest checkpoint snapshot", async () => {
   const originalFetch = globalThis.fetch;

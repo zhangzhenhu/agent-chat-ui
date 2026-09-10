@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { LangGraphLogoSVG } from "@/components/icons/langgraph";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight, Braces, Loader2 } from "lucide-react";
 import { PasswordInput } from "@/components/ui/password-input";
 import { getApiKey } from "@/lib/api-key";
 import { createClient } from "@/providers/client";
@@ -707,6 +707,21 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
             </div>
 
             <div className="mt-2 flex justify-end gap-3">
+              <Button
+                asChild
+                variant="outline"
+                size="lg"
+                title="打开 State Workbench"
+              >
+                <a
+                  href="/state-workbench"
+                  target={runtime.isElectron ? undefined : "_blank"}
+                  rel={runtime.isElectron ? undefined : "noreferrer"}
+                >
+                  <Braces className="size-4" />
+                  State Workbench
+                </a>
+              </Button>
               {isConfigOverlay && (
                 <Button
                   type="button"

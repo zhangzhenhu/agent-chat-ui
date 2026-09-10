@@ -40,13 +40,25 @@ const SPECIALIST_AGENT_NAMES = {
   gas_supply: "gas_supply_specialist",
 } as const;
 
-const SPECIALIST_CHECKPOINT_NAMESPACES = {
+export const SPECIALIST_CHECKPOINT_NAMESPACES = {
   // V2 checkpoint namespaces are derived from the compiled specialist stage node name.
   gas_need: "specialist__gas_need_specialist",
   food_supply: "specialist__food_supply_specialist",
   food_need: "specialist__food_need_specialist",
   gas_supply: "specialist__gas_supply_specialist",
 } as const;
+
+export type SpecialistDomain = "gas" | "food";
+export type SpecialistPanel = "need" | "supply";
+
+export function getSpecialistCheckpointNs(
+  panel: SpecialistPanel,
+  domain: SpecialistDomain,
+): string {
+  const key =
+    `${domain}_${panel}` as keyof typeof SPECIALIST_CHECKPOINT_NAMESPACES;
+  return SPECIALIST_CHECKPOINT_NAMESPACES[key];
+}
 
 export function getChildStateSpecialist(tab: StateTabId): string | null {
   if (tab === "main") {

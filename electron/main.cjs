@@ -56,24 +56,29 @@ async function resolveStaticFile(root, requestPath) {
   if (!relative || relative.includes("\0")) return null;
 
   const rootReal = await fsp.realpath(root);
-  const candidate = path.resolve(rootReal, relative);
-  if (
-    candidate !== rootReal &&
-    !candidate.startsWith(`${rootReal}${path.sep}`)
-  ) {
-    return null;
+  const normalizedRelative = relative.replace(/\/+$/, "") || "index.html";
+  const candidates = [path.resolve(rootReal, normalizedRelative)];
+  if (!path.extname(normalizedRelative)) {
+    candidates.push(path.resolve(rootReal, normalizedRelative, "index.html"));
+    candidates.push(path.resolve(rootReal, `${normalizedRelative}.html`));
   }
-
-  const stats = await fsp.stat(candidate).catch(() => null);
-  if (!stats?.isFile()) return null;
-  const candidateReal = await fsp.realpath(candidate);
-  if (
-    candidateReal !== rootReal &&
-    !candidateReal.startsWith(`${rootReal}${path.sep}`)
-  ) {
-    return null;
+  for (const candidate of candidates) {
+    if (
+      candidate !== rootReal &&
+      !candidate.startsWith(`${rootReal}${path.sep}`)
+    )
+      continue;
+    const stats = await fsp.stat(candidate).catch(() => null);
+    if (!stats?.isFile()) continue;
+    const candidateReal = await fsp.realpath(candidate);
+    if (
+      candidateReal !== rootReal &&
+      !candidateReal.startsWith(`${rootReal}${path.sep}`)
+    )
+      continue;
+    return candidateReal;
   }
-  return candidateReal;
+  return null;
 }
 
 async function startStaticServer() {

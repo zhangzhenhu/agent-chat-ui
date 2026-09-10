@@ -11,7 +11,7 @@ function buildDebugUrl(apiUrl: string, pathname: string): URL {
   );
 }
 
-function buildRuntimeUrl(apiUrl: string, pathname: string): URL {
+export function buildRuntimeUrl(apiUrl: string, pathname: string): URL {
   const baseUrl = new URL(apiUrl);
   const basePath = baseUrl.pathname.replace(/\/$/, "");
 
@@ -75,6 +75,33 @@ export type ChildThreadStateResponse = {
   parent_checkpoint?: unknown;
   snapshot?: unknown;
 };
+
+export type RootThreadStateResponse = Record<string, unknown>;
+
+export function buildRootStateUrl(args: {
+  apiUrl: string;
+  threadId: string;
+}): string {
+  return buildRuntimeUrl(
+    args.apiUrl,
+    `threads/${encodeURIComponent(args.threadId)}/state/`,
+  ).toString();
+}
+
+export async function fetchRootThreadState(args: {
+  apiUrl: string;
+  threadId: string;
+  apiKey?: string | null;
+  authScheme?: string | null;
+  signal?: AbortSignal;
+}): Promise<RootThreadStateResponse> {
+  return fetchJson<RootThreadStateResponse>({
+    url: buildRootStateUrl(args),
+    apiKey: args.apiKey,
+    authScheme: args.authScheme,
+    signal: args.signal,
+  });
+}
 
 export type SkillListItem = {
   name?: string | null;

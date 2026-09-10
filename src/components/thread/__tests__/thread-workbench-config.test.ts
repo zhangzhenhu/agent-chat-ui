@@ -6,6 +6,7 @@ const {
   SKILLS_TABS,
   getChildStateSpecialist,
   getChildStateCheckpointNs,
+  getSpecialistCheckpointNs,
   getSkillsAgentName,
   buildWorkbenchCacheKey,
 } = await import(
@@ -55,6 +56,25 @@ test("child state tabs map to the persisted V2 checkpoint namespaces", () => {
   assert.equal(
     getChildStateCheckpointNs("gas_supply"),
     "specialist__gas_supply_specialist",
+  );
+});
+
+test("simplified gas and food domains map to each specialist panel", () => {
+  assert.equal(
+    getSpecialistCheckpointNs("need", "gas"),
+    "specialist__gas_need_specialist",
+  );
+  assert.equal(
+    getSpecialistCheckpointNs("need", "food"),
+    "specialist__food_need_specialist",
+  );
+  assert.equal(
+    getSpecialistCheckpointNs("supply", "gas"),
+    "specialist__gas_supply_specialist",
+  );
+  assert.equal(
+    getSpecialistCheckpointNs("supply", "food"),
+    "specialist__food_supply_specialist",
   );
 });
 

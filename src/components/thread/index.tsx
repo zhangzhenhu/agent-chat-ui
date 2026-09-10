@@ -25,6 +25,7 @@ import {
   XIcon,
   Plus,
   Settings,
+  Braces,
   Globe2,
   ChevronDown,
   Check,
@@ -169,6 +170,32 @@ function OpenGitHubRepo() {
         <TooltipContent side="left">
           <p>Open GitHub repo</p>
         </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function OpenStateWorkbench({ className }: { className?: string }) {
+  const runtime = useRuntimeConfig();
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <a
+            href="/state-workbench"
+            target={runtime.isElectron ? undefined : "_blank"}
+            rel={runtime.isElectron ? undefined : "noreferrer"}
+            className={cn(
+              "flex size-6 items-center justify-center rounded-md p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800",
+              className,
+            )}
+            aria-label="Open state workbench"
+          >
+            <Braces className="size-5" />
+            <span className="sr-only">Open state workbench</span>
+          </a>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">State Workbench</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );
@@ -1018,6 +1045,7 @@ export function Thread() {
                 />
               </div>
               <div className="absolute top-2 right-4 flex items-center gap-2">
+                <OpenStateWorkbench />
                 <TooltipIconButton
                   tooltip="Deployment settings"
                   variant="ghost"
@@ -1090,6 +1118,7 @@ export function Thread() {
                   >
                     <Settings className="size-5" />
                   </TooltipIconButton>
+                  <OpenStateWorkbench className="size-10 p-4" />
                   <OpenGitHubRepo />
                 </div>
                 <TooltipIconButton
