@@ -490,20 +490,34 @@ export function StateWorkbenchPage() {
     if (!matches.length) return;
     const next = (matchIndex + direction + matches.length) % matches.length;
     setMatchIndex(next);
-    const match = matches[next];
-    const panel = match.id.startsWith("need-")
+  };
+
+  useEffect(() => {
+    if (!activeMatch) return;
+    const panel = activeMatch.id.startsWith("need-")
       ? "need"
-      : match.id.startsWith("supply-")
+      : activeMatch.id.startsWith("supply-")
         ? "supply"
         : "root";
-    setCollapsedPanels((current) => ({ ...current, [panel]: false }));
-    requestAnimationFrame(() => {
-      const element = document.getElementById(
-        `json-node-${match.id.replace(/:value$/, "").replace(/[^a-zA-Z0-9_-]/g, "-")}`,
-      );
-      element?.scrollIntoView({ behavior: "smooth", block: "center" });
-    });
-  };
+    setCollapsedPanels((current) =>
+      current[panel] ? { ...current, [panel]: false } : current,
+    );
+    const elementId = `json-node-${activeMatch.id
+      .replace(/:value$/, "")
+      .replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+    let frame = 0;
+    let attempts = 0;
+    const scrollToMatch = () => {
+      const element = document.getElementById(elementId);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+      if (attempts++ < 5) frame = requestAnimationFrame(scrollToMatch);
+    };
+    frame = requestAnimationFrame(scrollToMatch);
+    return () => cancelAnimationFrame(frame);
+  }, [activeMatch]);
 
   const refresh = (key: ResourceKey) => {
     if (!threadParam || !environment) return;

@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, ChevronRight, Copy } from "lucide-react";
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -79,8 +79,19 @@ function getMessageRunId(value: unknown): string | null {
   return runId?.trim() ?? null;
 }
 
-function RunGroup({ runId, children }: { runId: string; children: ReactNode }) {
+function RunGroup({
+  runId,
+  children,
+  active,
+}: {
+  runId: string;
+  children: ReactNode;
+  active: boolean;
+}) {
   const [open, setOpen] = useState(true);
+  useEffect(() => {
+    if (active) setOpen(true);
+  }, [active]);
   return (
     <div>
       <button
@@ -123,7 +134,17 @@ function Node({
 }) {
   const expandable = isExpandable(value);
   // `root` is level 0, so visible JSON levels 1 through 4 open by default.
-  const [open, setOpen] = useState(() => path.split(".").length - 1 <= 4);
+  const defaultOpen = path.split(".").length - 1 <= 4;
+  const activeInNode = Boolean(
+    activeNodeId &&
+    (activeNodeId === `${idPrefix}:${path}` ||
+      activeNodeId.startsWith(`${idPrefix}:${path}.`) ||
+      activeNodeId.startsWith(`${idPrefix}:${path}:`)),
+  );
+  const [open, setOpen] = useState(() => defaultOpen || activeInNode);
+  useEffect(() => {
+    if (activeInNode) setOpen(true);
+  }, [activeInNode]);
   const nodeId = path;
   const entries = expandable ? Object.entries(value) : [];
   const fieldMatched = Boolean(field && nodeContains(field, query));
@@ -167,6 +188,9 @@ function Node({
         <RunGroup
           key={`${path}.run.${groupIndex}`}
           runId={group.runId}
+          active={group.entries.some(([entryField]) =>
+            activeNodeId?.startsWith(`${idPrefix}:${path}.${entryField}`),
+          )}
         >
           {groupEntries}
         </RunGroup>
