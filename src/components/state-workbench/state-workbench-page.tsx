@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
+  Copy,
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCcw,
@@ -22,6 +24,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useRuntimeConfig } from "@/providers/runtime-config";
 import {
+  buildChildStateCurl,
+  buildRootStateCurl,
   fetchChildThreadState,
   fetchRootThreadState,
   getErrorMessage,
@@ -113,6 +117,7 @@ function Panel({
   activeMatchId,
   collapsed,
   onToggleCollapsed,
+  curlCommand,
 }: {
   panel: WorkbenchPanelId;
   title: string;
@@ -124,8 +129,19 @@ function Panel({
   activeMatchId: string | null;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  curlCommand: string | null;
 }) {
   const idPrefix = domain ? `${panel}-${domain}` : panel;
+  const [copied, setCopied] = useState(false);
+
+  const copyCurl = () => {
+    if (!curlCommand) return;
+    void navigator.clipboard.writeText(curlCommand).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
   if (collapsed) {
     return (
       <section className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:min-h-0">
@@ -171,6 +187,26 @@ function Panel({
             ))}
           </div>
         ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          disabled={!curlCommand}
+          onClick={copyCurl}
+          title={
+            curlCommand ? "复制查询 cURL" : "输入 thread_id 后可复制查询 cURL"
+          }
+          aria-label={
+            curlCommand ? "复制查询 cURL" : "输入 thread_id 后可复制查询 cURL"
+          }
+        >
+          {copied ? (
+            <Check className="size-3.5 text-emerald-600" />
+          ) : (
+            <Copy className="size-3.5" />
+          )}
+        </Button>
         <Button
           type="button"
           variant="ghost"
@@ -398,6 +434,28 @@ export function StateWorkbenchPage() {
       supply: resources[resourceKey("supply", supplyDomain)] ?? EMPTY_RESOURCE,
     }),
     [needDomain, resources, supplyDomain],
+  );
+  const panelCurlCommands = useMemo(
+    () =>
+      !threadParam || !environment
+        ? { root: null, need: null, supply: null }
+        : {
+            root: buildRootStateCurl({
+              apiUrl: environment.apiUrl,
+              threadId: threadParam,
+            }),
+            need: buildChildStateCurl({
+              apiUrl: environment.apiUrl,
+              threadId: threadParam,
+              checkpointNs: getWorkbenchCheckpointNs("need", needDomain),
+            }),
+            supply: buildChildStateCurl({
+              apiUrl: environment.apiUrl,
+              threadId: threadParam,
+              checkpointNs: getWorkbenchCheckpointNs("supply", supplyDomain),
+            }),
+          },
+    [environment, needDomain, supplyDomain, threadParam],
   );
 
   useEffect(() => {
@@ -648,6 +706,7 @@ export function StateWorkbenchPage() {
           activeMatchId={activeMatch?.id ?? null}
           collapsed={collapsedPanels.root}
           onToggleCollapsed={() => toggleCollapsed("root")}
+          curlCommand={panelCurlCommands.root}
         />
         <Panel
           panel="need"
@@ -662,6 +721,7 @@ export function StateWorkbenchPage() {
           activeMatchId={activeMatch?.id ?? null}
           collapsed={collapsedPanels.need}
           onToggleCollapsed={() => toggleCollapsed("need")}
+          curlCommand={panelCurlCommands.need}
         />
         <Panel
           panel="supply"
@@ -676,6 +736,7 @@ export function StateWorkbenchPage() {
           activeMatchId={activeMatch?.id ?? null}
           collapsed={collapsedPanels.supply}
           onToggleCollapsed={() => toggleCollapsed("supply")}
+          curlCommand={panelCurlCommands.supply}
         />
       </div>
     </main>
