@@ -78,6 +78,25 @@ test("simplified gas and food domains map to each specialist panel", () => {
   );
 });
 
+test("voyage and haven domains map to their specialist checkpoint namespaces", () => {
+  assert.equal(
+    getSpecialistCheckpointNs("need", "voyage"),
+    "specialist__voyage_need_specialist",
+  );
+  assert.equal(
+    getSpecialistCheckpointNs("supply", "voyage"),
+    "specialist__voyage_supply_specialist",
+  );
+  assert.equal(
+    getSpecialistCheckpointNs("need", "haven"),
+    "specialist__haven_need_specialist",
+  );
+  assert.equal(
+    getSpecialistCheckpointNs("supply", "haven"),
+    "specialist__haven_supply_specialist",
+  );
+});
+
 test("skills mapping resolves specialist tabs to backend agent names", () => {
   assert.equal(getSkillsAgentName("all"), null);
   assert.equal(getSkillsAgentName("gas_need"), "gas_need_specialist");

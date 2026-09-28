@@ -8,7 +8,9 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const staging = await mkdtemp(path.join(os.tmpdir(), "agent-chat-ui-static-"));
 const outputRoot = path.join(root, ".electron-build");
-const outputDir = path.join(outputRoot, "ui");
+const outputDir = process.env.STATIC_EXPORT_OUTPUT
+  ? path.resolve(root, process.env.STATIC_EXPORT_OUTPUT)
+  : path.join(outputRoot, "ui");
 
 const excluded = new Set([
   ".git",
@@ -59,7 +61,7 @@ try {
   await rm(outputDir, { recursive: true, force: true });
   await cp(path.join(staging, "out"), outputDir, { recursive: true });
   await readFile(path.join(outputDir, "default-params.json"));
-  process.stdout.write(`Electron static UI prepared at ${outputDir}\n`);
+  process.stdout.write(`Static UI prepared at ${outputDir}\n`);
 } finally {
   await rm(staging, { recursive: true, force: true });
 }

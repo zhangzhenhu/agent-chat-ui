@@ -29,6 +29,7 @@ dist-ssr
 .next/
 .electron-build/
 dist-electron/
+dist-static-web-server/
 next-env.d.ts
 
 # TS incremental build info

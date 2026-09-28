@@ -34,6 +34,7 @@ import {
 } from "./state-workbench-data";
 import {
   getWorkbenchCheckpointNs,
+  isWorkbenchDomain,
   WORKBENCH_DOMAIN_LABELS,
   WORKBENCH_DOMAINS,
   WORKBENCH_ENVIRONMENTS,
@@ -293,8 +294,12 @@ export function StateWorkbenchPage() {
   )
     ? envParam
     : "st";
-  const needDomain: WorkbenchDomain = needParam === "food" ? "food" : "gas";
-  const supplyDomain: WorkbenchDomain = supplyParam === "food" ? "food" : "gas";
+  const needDomain: WorkbenchDomain = isWorkbenchDomain(needParam)
+    ? needParam
+    : "gas";
+  const supplyDomain: WorkbenchDomain = isWorkbenchDomain(supplyParam)
+    ? supplyParam
+    : "gas";
   const environment =
     runtime.environments.find((item) => item.id === environmentId) ??
     runtime.environments[0];
