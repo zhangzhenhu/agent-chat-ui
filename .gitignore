@@ -28,6 +28,7 @@ dist-ssr
 .env
 .next/
 .electron-build/
+static-web-server-binaries/
 dist-electron/
 dist-static-web-server/
 next-env.d.ts
