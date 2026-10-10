@@ -133,8 +133,10 @@ function Node({
   idPrefix: string;
 }) {
   const expandable = isExpandable(value);
-  // `root` is level 0, so visible JSON levels 1 through 4 open by default.
-  const defaultOpen = path.split(".").length - 1 <= 4;
+  // `root` is level 0, so visible JSON levels 1 through 2 open by default.
+  // Keep this shallow: rendered node count grows with depth, and level 3+
+  // subtrees (e.g. message content) dominate render time on large states.
+  const defaultOpen = path.split(".").length - 1 <= 2;
   const activeInNode = Boolean(
     activeNodeId &&
     (activeNodeId === `${idPrefix}:${path}` ||
