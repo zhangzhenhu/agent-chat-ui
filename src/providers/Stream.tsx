@@ -402,8 +402,9 @@ function AssistantGate({
   );
 }
 
-// Default values for the form
-const DEFAULT_API_URL = "http://localhost:2024";
+// Default values for the web entry form.
+const DEFAULT_API_URL = "https://stdemandintel.ecej.com";
+const DEFAULT_ASSISTANT_ID = "family_main";
 const AGENT_BUILDER_AUTH_SCHEME = "langsmith-api-key";
 
 export const StreamProvider: React.FC<{ children: ReactNode }> = ({
@@ -419,7 +420,7 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
     defaultValue: envApiUrl || "",
   });
   const [queryAssistantId, setQueryAssistantId] = useQueryState("assistantId", {
-    defaultValue: envAssistantId || "",
+    defaultValue: envAssistantId || DEFAULT_ASSISTANT_ID,
   });
   const [queryAuthScheme, setQueryAuthScheme] = useQueryState("authScheme", {
     defaultValue: envAuthScheme || "",
@@ -439,6 +440,9 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   const [desktopShowConfig, setDesktopShowConfig] = useState(false);
   const [desktopFormEnvironmentId, setDesktopFormEnvironmentId] = useState(
     runtime.environmentId,
+  );
+  const [webFormApiUrl, setWebFormApiUrl] = useState(
+    () => queryApiUrl || envApiUrl || DEFAULT_API_URL,
   );
   const [isAgentBuilder, setIsAgentBuilder] = useState(
     () =>
@@ -480,6 +484,12 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
   const effectiveShowConfig = runtime.isElectron
     ? desktopShowConfig
     : showConfig === "true";
+
+  useEffect(() => {
+    if (!runtime.isElectron) {
+      setWebFormApiUrl(apiUrl || envApiUrl || DEFAULT_API_URL);
+    }
+  }, [apiUrl, envApiUrl, effectiveShowConfig, runtime.isElectron]);
 
   /**
    * Show the form when:
@@ -641,6 +651,38 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
                 </select>
               </div>
             )}
+            {!runtime.isElectron && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="webDeploymentEnvironment">Environment</Label>
+                <select
+                  id="webDeploymentEnvironment"
+                  value={
+                    runtime.environments.find(
+                      (environment) => environment.apiUrl === webFormApiUrl,
+                    )?.id ?? "custom"
+                  }
+                  onChange={(event) => {
+                    const selected = runtime.environments.find(
+                      (environment) => environment.id === event.target.value,
+                    );
+                    if (selected) setWebFormApiUrl(selected.apiUrl);
+                  }}
+                  className="bg-background h-10 rounded-md border px-3 text-sm"
+                >
+                  {runtime.environments
+                    .filter((environment) => environment.id !== "local")
+                    .map((environment) => (
+                      <option
+                        key={environment.id}
+                        value={environment.id}
+                      >
+                        {environment.name} ({environment.apiUrl})
+                      </option>
+                    ))}
+                  <option value="custom">Custom URL</option>
+                </select>
+              </div>
+            )}
             <div className="flex flex-col gap-2">
               <Label htmlFor="apiUrl">
                 Deployment URL<span className="text-rose-500">*</span>
@@ -649,20 +691,25 @@ export const StreamProvider: React.FC<{ children: ReactNode }> = ({
                 This is the URL of your LangGraph deployment. Can be a local, or
                 production deployment.
               </p>
-              <Input
-                id="apiUrl"
-                name="apiUrl"
-                className="bg-background"
-                key={
-                  runtime.isElectron ? desktopFormEnvironmentId : "web-api-url"
-                }
-                defaultValue={
-                  runtime.isElectron
-                    ? desktopFormApiUrl
-                    : apiUrl || DEFAULT_API_URL
-                }
-                required
-              />
+              {runtime.isElectron ? (
+                <Input
+                  id="apiUrl"
+                  name="apiUrl"
+                  className="bg-background"
+                  key={desktopFormEnvironmentId}
+                  defaultValue={desktopFormApiUrl}
+                  required
+                />
+              ) : (
+                <Input
+                  id="apiUrl"
+                  name="apiUrl"
+                  className="bg-background"
+                  value={webFormApiUrl}
+                  onChange={(event) => setWebFormApiUrl(event.target.value)}
+                  required
+                />
+              )}
             </div>
 
             {/* Assistant/Graph ID field removed.
