@@ -97,6 +97,17 @@ test("voyage and haven domains map to their specialist checkpoint namespaces", (
   );
 });
 
+test("generic domain maps to the shared generic specialist namespaces", () => {
+  assert.equal(
+    getSpecialistCheckpointNs("need", "generic"),
+    "specialist__generic_need_specialist",
+  );
+  assert.equal(
+    getSpecialistCheckpointNs("supply", "generic"),
+    "specialist__generic_supply_specialist",
+  );
+});
+
 test("skills mapping resolves specialist tabs to backend agent names", () => {
   assert.equal(getSkillsAgentName("all"), null);
   assert.equal(getSkillsAgentName("gas_need"), "gas_need_specialist");

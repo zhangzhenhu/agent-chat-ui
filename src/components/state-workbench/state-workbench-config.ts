@@ -18,6 +18,7 @@ export const WORKBENCH_DOMAINS = [
   "food",
   "voyage",
   "haven",
+  "generic",
 ] as const satisfies readonly SpecialistDomain[];
 
 export const WORKBENCH_DOMAIN_LABELS: Record<WorkbenchDomain, string> = {
@@ -25,6 +26,7 @@ export const WORKBENCH_DOMAIN_LABELS: Record<WorkbenchDomain, string> = {
   food: "美食",
   voyage: "去哪玩",
   haven: "美好空间",
+  generic: "通用",
 };
 
 export type WorkbenchDomain = (typeof WORKBENCH_DOMAINS)[number];

@@ -50,9 +50,11 @@ export const SPECIALIST_CHECKPOINT_NAMESPACES = {
   voyage_supply: "specialist__voyage_supply_specialist",
   haven_need: "specialist__haven_need_specialist",
   haven_supply: "specialist__haven_supply_specialist",
+  generic_need: "specialist__generic_need_specialist",
+  generic_supply: "specialist__generic_supply_specialist",
 } as const;
 
-export type SpecialistDomain = "gas" | "food" | "voyage" | "haven";
+export type SpecialistDomain = "gas" | "food" | "voyage" | "haven" | "generic";
 export type SpecialistPanel = "need" | "supply";
 
 export function getSpecialistCheckpointNs(

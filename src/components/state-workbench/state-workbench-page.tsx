@@ -167,68 +167,78 @@ function Panel({
   }
   return (
     <section className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:min-h-0">
-      <header className="flex flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-3">
-        <div className="mr-auto">
-          <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+      <header className="grid gap-3 border-b border-slate-200 px-4 py-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-semibold text-slate-900">
+            {title}
+          </h2>
           <p className="text-xs text-slate-500">
             {stateLabel(state)} · {formatTime(state.updatedAt)}
           </p>
         </div>
-        {domain && onDomainChange ? (
-          <div className="flex rounded-md border border-slate-200 bg-slate-50 p-0.5">
-            {WORKBENCH_DOMAINS.map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => onDomainChange(item)}
-                className={`rounded px-2.5 py-1 text-xs ${domain === item ? "bg-white font-medium text-teal-700 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
-              >
-                {WORKBENCH_DOMAIN_LABELS[item]}
-              </button>
-            ))}
+        <div className="flex min-w-0 items-center justify-between gap-2 xl:justify-end">
+          {domain && onDomainChange ? (
+            <div className="flex max-w-full min-w-0 shrink overflow-x-auto rounded-md border border-slate-200 bg-slate-50 p-0.5">
+              {WORKBENCH_DOMAINS.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => onDomainChange(item)}
+                  className={`shrink-0 rounded px-2.5 py-1 text-xs ${domain === item ? "bg-white font-medium text-teal-700 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                >
+                  {WORKBENCH_DOMAIN_LABELS[item]}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              disabled={!curlCommand}
+              onClick={copyCurl}
+              title={
+                curlCommand
+                  ? "复制查询 cURL"
+                  : "输入 thread_id 后可复制查询 cURL"
+              }
+              aria-label={
+                curlCommand
+                  ? "复制查询 cURL"
+                  : "输入 thread_id 后可复制查询 cURL"
+              }
+            >
+              {copied ? (
+                <Check className="size-3.5 text-emerald-600" />
+              ) : (
+                <Copy className="size-3.5" />
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={onRefresh}
+              title="刷新"
+            >
+              <RefreshCcw className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              onClick={onToggleCollapsed}
+              title={`折叠 ${title}`}
+              aria-label={`折叠 ${title}`}
+            >
+              <PanelLeftClose className="size-4" />
+            </Button>
           </div>
-        ) : null}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          disabled={!curlCommand}
-          onClick={copyCurl}
-          title={
-            curlCommand ? "复制查询 cURL" : "输入 thread_id 后可复制查询 cURL"
-          }
-          aria-label={
-            curlCommand ? "复制查询 cURL" : "输入 thread_id 后可复制查询 cURL"
-          }
-        >
-          {copied ? (
-            <Check className="size-3.5 text-emerald-600" />
-          ) : (
-            <Copy className="size-3.5" />
-          )}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          onClick={onRefresh}
-          title="刷新"
-        >
-          <RefreshCcw className="size-3.5" />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          onClick={onToggleCollapsed}
-          title={`折叠 ${title}`}
-          aria-label={`折叠 ${title}`}
-        >
-          <PanelLeftClose className="size-4" />
-        </Button>
+        </div>
       </header>
       <div className="flex min-h-0 flex-1 flex-col p-3">
         {state.status === "error" ? (

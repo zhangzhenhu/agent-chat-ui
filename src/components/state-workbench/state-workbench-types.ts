@@ -1,5 +1,5 @@
 export type WorkbenchPanelId = "root" | "need" | "supply";
-export type WorkbenchDomain = "gas" | "food" | "voyage" | "haven";
+export type WorkbenchDomain = "gas" | "food" | "voyage" | "haven" | "generic";
 
 export type ResourceStatus = "idle" | "loading" | "success" | "empty" | "error";
 
