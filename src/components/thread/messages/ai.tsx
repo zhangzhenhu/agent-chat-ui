@@ -192,6 +192,7 @@ export function AssistantMessage({
               isAiMessage={true}
               handleRegenerate={() => handleRegenerate(parentCheckpoint)}
               duration={isCurrentMessageStreaming ? null : duration}
+              metadata={message.additional_kwargs}
             />
           </div>
         ) : null}

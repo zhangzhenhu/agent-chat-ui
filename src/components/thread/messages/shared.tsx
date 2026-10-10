@@ -10,6 +10,7 @@ import {
   Clock,
 } from "lucide-react";
 import { TooltipIconButton } from "../tooltip-icon-button";
+import { MessageMetadataSheet } from "./message-metadata-sheet";
 import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -132,6 +133,7 @@ export function CommandBar({
    * null = still streaming or no timing data available.
    */
   duration,
+  metadata,
 }: {
   content: string;
   isHumanMessage?: boolean;
@@ -142,6 +144,7 @@ export function CommandBar({
   handleRegenerate?: () => void;
   isLoading: boolean;
   duration?: number | null;
+  metadata?: Record<string, unknown>;
 }) {
   if (isHumanMessage && isAiMessage) {
     throw new Error(
@@ -214,6 +217,9 @@ export function CommandBar({
         content={content}
         disabled={isLoading}
       />
+      {isAiMessage && metadata && Object.keys(metadata).length > 0 && (
+        <MessageMetadataSheet metadata={metadata} />
+      )}
       {isAiMessage && !!handleRegenerate && (
         <TooltipIconButton
           disabled={isLoading}
