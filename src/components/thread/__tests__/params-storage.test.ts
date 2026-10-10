@@ -48,14 +48,27 @@ test("built-in parameter profiles contain the environment-specific inputs", () =
   "current_user_id": "26607976"
 }`,
   );
-  assert.deepEqual(
-    getParamsProfileForEnvironment(store, "st")?.inputText,
-    `{
-  "phone": "18618190062",
-  "contract_no": "3200090219",
-  "current_user_id": "2494996"
-}`,
+  const stProfiles = store.profiles.filter(
+    (profile: { environmentId?: string }) => profile.environmentId === "st",
   );
+  assert.deepEqual(
+    stProfiles.map((profile: { name: string }) => profile.name),
+    ["st-卡表", "st-普表", "st-物联表", "st-暖表"],
+  );
+  assert.deepEqual(
+    stProfiles.map((profile: { inputText: string }) =>
+      JSON.parse(profile.inputText).house_infos.map(
+        (house: { contract_no: string }) => house.contract_no,
+      ),
+    ),
+    [
+      ["3200095238", "3200090219", "3200095244"],
+      ["3200095244", "3200090219", "3200095238"],
+      ["3200095736", "3200095244", "3200090219", "3200095238"],
+      ["3200095162", "3200095244", "3200090219", "3200095238"],
+    ],
+  );
+  assert.equal(getParamsProfileForEnvironment(store, "st")?.name, "st-卡表");
   assert.equal(
     store.profiles.some((profile: { id: string }) => profile.id === "custom"),
     true,
